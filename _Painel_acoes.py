@@ -319,6 +319,7 @@ COLS += [("ppo", "PPO 12/26 (%)", 10, "pct", "ind"), ("ppo_sinal", "PPO: linha d
          ("r2_6m", "Regularidade da reta de 6 meses (R², 0 a 1)", 7, "num1", "ind"),
          ("mm50", "Média 50 dias (entrada: o preço acima dela = estabilizou)", 10, "preco", "ind"),
          ("arranque", "Início de subida depois de 120 dias parada (1 = sim)", 7, "int", "ind"),
+         ("sub60", "Subida forte e regular nos últimos 60 dias (1 = sim)", 7, "int", "ind"),
          ("vol1a", "Volatilidade do último ano (desvio-padrão anual das variações diárias) (%)", 9, "pct", "ind"),
          ("rec_media", "Recomendação média dos analistas (1 compra forte … 5 venda)", 7, "num1", "ind"),
          ("fator_tend", "Fator de tendência (multiplica a nota geral)", 7, "num1", "ind"),
@@ -342,7 +343,7 @@ for _c in COLS:
 COLS = _cols + [("moeda_alt", "Moeda alternativa", 6, "txt", "ind"),
                 ("fx_alt", "Câmbio: moeda da cotação -> alternativa", 9, "geral", "ind"),
                 ("desat", "Não atualizado na última atualização parcial (1)", 5, "geral", "ind")]
-OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
+OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "sub60", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
            "compra", "compra_alt", "compra_pct")     # compra razoável (trigger): já não se usa; fica só a compra máxima   # corr: corretora (escondida por agora; os valores ficam)
 # larguras mais estreitas e letra 9 em algumas colunas
 _LARG = {"preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp": 30, "qual": 6, "saude_n": 6,
@@ -602,7 +603,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V144", "21/11/2026"
+VERSAO, DATA_VERSAO = "V145", "21/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -2017,6 +2018,10 @@ def pontuar(d, preco):
     ge, pe = (max(g, P5_TEND), max(p200, 1e-4)) if arr else (g, p200)
     if arr:
         sobe, desce, venda_prox, compra_prox = True, False, False, False
+    # V145: subida forte e regular nos últimos 60 dias (só ações, já com tendência): conta como médias ≥ 5% afastadas
+    s60 = bool(d.get("sub60")) and d.get("tipo") != "ETF" and g > 0 and p200 > 0 and g < P5_TEND
+    if s60:
+        ge = max(ge, P5_TEND)
     queda_vigiar = False
     if rede and preco < rede and p200 < 0:         # queda brusca confirmada pela tendência (abaixo da média 200)
         p = 1
@@ -2054,6 +2059,9 @@ def pontuar(d, preco):
     if limitado:
         p = 2.5
     c = []
+    if s60 and not arr:
+        c.append(f"subida forte e regular nos últimos {SUB60_D} dias (≥ {SUB60_MIN:+.0%}/ano): conta como tendência "
+                 "forte, sem esperar que as médias se afastem 5%")
     if arr and (g < P5_TEND or p200 < 0):
         c.append(f"início de subida depois de {ARR_BASE} dias parada (preço acima do máximo desse período): conta já "
                  "como tendência confirmada, antes de as médias cruzarem")
@@ -2977,6 +2985,12 @@ ARR_BASE_MAX, ARR_SUB_MIN = 0.05, 0.30   # reta da base ≤ +5%/ano; reta dos 30
 # (por isso só nas ações). Ao contrário (quebra depois de parada) NÃO prevê mais queda: não há regra de venda.
 
 
+SUB60_D, SUB60_MIN, SUB60_R2 = 60, 0.40, 0.6   # tendência forte também com a reta dos últimos 60 dias ≥ +40%/ano
+# (R² ≥ 0,6) e o preço acima da média 200, sem esperar que as médias se afastem 5% (que chega tarde depois de um
+# patamar). Testado (42 ações; S&P 500 desde 1950): as datas promovidas renderam como as de sinal 4 ou mais (S&P
+# +11,6% a 12 meses vs +7,0% das que ficam em 3); os 5% entre médias continuam (apanham outros casos).
+
+
 def arranque(v):
     """True se as cotações diárias v (as mais recentes no fim) mostram um arranque: base de ARR_BASE dias parada ou a
     descer, depois ARR_SUB dias a subir depressa e o preço acima do máximo da base."""
@@ -3001,6 +3015,9 @@ def inclin_recentes(cl):
         out["mm50"] = float(cl.iloc[-50:].mean())
     if len(cl) >= ARR_BASE + ARR_SUB + 1:
         out["arranque"] = 1 if arranque(cl.to_numpy(dtype=float)) else 0
+    if len(cl) >= SUB60_D + 1:
+        i60, q60 = reta_r2(cl.iloc[-(SUB60_D + 1):].to_numpy(dtype=float), 252)
+        out["sub60"] = 1 if (i60 is not None and q60 is not None and i60 >= SUB60_MIN and q60 >= SUB60_R2) else 0
     for k, r2k, n in (("inc1a", "r2_1a", 252), ("inc6m", "r2_6m", 126)):
         if len(cl) >= int(n * 0.9):
             out[k], out[r2k] = reta_r2(cl.iloc[-n:].to_numpy(dtype=float), 252)
@@ -5858,7 +5875,7 @@ function calcCompra(){
     const fora=d=>nq.has(T(d))||nd.has(T(d))||!acha(d),soma=esc_.filter(d=>!fora(d)).reduce((s,d)=>s+d.ngc,0);
     const wd=d=>fora(d)||!soma?0:d.ngc/soma;
     let tv=0;
-    const vis=d=>acha(d)&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d)))&&(c.vn||wd(d)>0);
+    const vis=d=>acha(d)&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d)))&&(c.vn||wd(d)*val>=0.005);   // 0 € (também com o grupo a 0 €)
     const cards=esc_.filter(vis).map(d=>{
       const f=fora(d),w=wd(d),v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
       return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corT(d)}">${num(d.ngc,2)}</div>
@@ -9004,6 +9021,8 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
         return np.exp(cov / vk * 252) - 1, (cov * cov / (vk * vy)).clip(0, 1)
     i1, q1 = inclin_d(252)
     i6, q6 = inclin_d(126)
+    i60s, q60s = inclin_d(SUB60_D + 1)
+    sub60 = (i60s >= SUB60_MIN) & (q60s >= SUB60_R2)
     iB = inclin_d(ARR_BASE)[0].shift(ARR_SUB + 1)            # arranque: base parada e depois subida rápida
     iR = inclin_d(ARR_SUB + 1)[0]
     mxB = P.rolling(ARR_BASE, min_periods=int(ARR_BASE * 0.9)).max().shift(ARR_SUB + 1)
@@ -9026,7 +9045,7 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
                 continue
             d = {"tipo": tipos.get(t) or "Ação", "mm100c": float(m100.at[dia, t]), "mm200c": float(m200.at[dia, t]),
                  "mm50": float(m50.at[dia, t]) if pd.notna(m50.at[dia, t]) else None, "preco": float(P.at[dia, t]),
-                 "arranque": 1 if bool(arrq.at[dia, t]) else 0}
+                 "arranque": 1 if bool(arrq.at[dia, t]) else 0, "sub60": 1 if bool(sub60.at[dia, t]) else 0}
             pos5 = P.index.get_loc(dia) - 5
             if pos5 >= 0 and pd.notna(gap.iloc[pos5][t]):
                 d["gap5"] = float(gap.iloc[pos5][t])
