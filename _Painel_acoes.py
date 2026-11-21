@@ -603,7 +603,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V145", "21/11/2026"
+VERSAO, DATA_VERSAO = "V146", "21/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -6392,6 +6392,29 @@ def _garantir_workflow(cfg):
         pass
 
 
+def _compra_sync():
+    """Escolhas da folha Compra (sem a tabela) para enviar ao GitHub, que refaz a app sem o Excel."""
+    c = _ler_json(FICH_COMPRA, {})
+    return {k: v for k, v in c.items() if k != "linhas2"} or None
+
+
+def enviar_compra_github():
+    """Depois do ▶ CALCULAR COMPRA: envia logo as escolhas da folha Compra (nas definições cifradas), para a app as
+    receber na atualização automática seguinte (até 15 minutos), sem esperar pelo próximo ▶ ATUALIZAR."""
+    cfg = _config_github()
+    if not cfg or not os.path.exists(FICH_SYNC):
+        return
+    try:
+        with open(FICH_SYNC, encoding="utf-8") as f:
+            sync = json.load(f)
+        defs = dict(sync, token_botao=cfg.get("token_botao"), enviado=f"{datetime.now():%d/%m/%Y %H:%M}",
+                    compra=_compra_sync())
+        _enviar_github(cfg, "config.enc", _cifrar(json.dumps(defs, ensure_ascii=False, default=_json_num), cfg["senha"]))
+        print("Escolhas da compra enviadas para a app (aparecem na próxima atualização automática, até 15 minutos).")
+    except Exception as e:
+        print("   aviso: escolhas da compra não enviadas para a app:", e)
+
+
 def publicar_github(html, versao="", dados=None):
     """Envia a página (cifrada) para o repositório; o GitHub Pages mostra-a em GH_URL ao fim de ~1 minuto. Depois de
     um ▶ ATUALIZAR envia também as definições (cifradas) e o script, para as atualizações automáticas no GitHub."""
@@ -6417,7 +6440,8 @@ def publicar_github(html, versao="", dados=None):
         with open(os.path.abspath(__file__), encoding="utf-8") as f:   # script sempre (o GitHub corre esta versão)
             _enviar_github(cfg, "_Painel_acoes.py", f.read())
         if SYNC:
-            defs = dict(SYNC, token_botao=cfg.get("token_botao"), enviado=f"{datetime.now():%d/%m/%Y %H:%M}")
+            defs = dict(SYNC, token_botao=cfg.get("token_botao"), enviado=f"{datetime.now():%d/%m/%Y %H:%M}",
+                        compra=_compra_sync())       # escolhas da folha Compra (o separador Compra da app usa-as)
             _enviar_github(cfg, "config.enc", _cifrar(json.dumps(defs, ensure_ascii=False, default=_json_num), cfg["senha"]))
             try:                                     # cópia local (o ↻ PREÇOS atualiza nela os detidos e volta a enviá-la)
                 with open(FICH_SYNC, "w", encoding="utf-8") as f:
@@ -7338,6 +7362,8 @@ def atualizar_servidor(tipo):
     else:
         print("Ainda sem definições do PC (config.enc): uso a lista base. Faz um ▶ ATUALIZAR no PC para as enviar.")
     guardar_modo(cfg.get("modo", "eur"))
+    if cfg.get("compra"):                          # escolhas da folha Compra do PC (separador Compra da app)
+        _gravar_json(FICH_COMPRA, cfg["compra"])
     if cfg.get("dos_etfs") and not os.path.exists(FICH_ACOES_ETF):
         _gravar_json(FICH_ACOES_ETF, cfg["dos_etfs"])
     LP_MIN, REF = cfg.get("lp_min", LP_MIN), None
@@ -7922,6 +7948,7 @@ def calcular_compra():
           .replace(",", " "))
     for a in avisos:
         print("   " + a)
+    enviar_compra_github()                         # a app do telemóvel passa a usar estas escolhas
 
 
 FOLHA_HIS = "Histórico"
