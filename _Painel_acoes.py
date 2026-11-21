@@ -603,7 +603,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V146", "21/11/2026"
+VERSAO, DATA_VERSAO = "V147", "21/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -5863,8 +5863,7 @@ function calcCompra(){
     for(const d of lista){
       let ng=d.ng??d.nt;const dc=d.dc||'';
       const L=d.np!=null?LA:LE;
-      if(dc.includes(': esperar')){const m=dc.match(/nota (\d+,\d+) ao confirmar/);
-        ng=Math.max(ng??0,dc.startsWith('Compra forte')?L[0]:dc.startsWith('Compra média')?L[1]:L[2],m?+m[1].replace(',','.'):0);}
+      // a nota global da tabela (também nos «esperar»), como no Excel
       if(ng==null||Math.round(ng*100)/100<mn-1e-9)continue;
       if(c.s&&!dc.startsWith('Compra'))continue;
       if(d.x&&!c.h)continue;
@@ -7724,7 +7723,7 @@ def folha_compra(wb):
                 "logo (também ao mudar o valor total ou a % em ações). Os x ficam guardados para os próximos cálculos. "
                 "As linhas escondidas com os filtros do cabeçalho também ficam com 0 € (o valor passa para as que se veem). "
                 "Decisão a lilás («Compra …: esperar»): título bom e barato cujo momento ainda não é de compra; entra "
-                "como os outros (com a «nota ao confirmar» que a decisão mostra) e a decisão diz o que esperar (preço acima da média 200 "
+                "como os outros (com a nota global da tabela) e a decisão diz o que esperar (preço acima da média 200 "
                 "ou 50 dias e/ou até à compra máxima): usa a ordem limite ou põe x em «Não quero» se preferires esperar.")
     ws["C2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C2"].font = Font(italic=True, size=9, color="595959")
@@ -7747,7 +7746,7 @@ def folha_compra(wb):
         ws[cv].font = Font(bold=True, size=12)
         ws[cv].alignment = Alignment(horizontal="center")
     ws["E4"], ws["E5"] = _nota_txt_formula("D4"), _nota_txt_formula("D5", LIM_ETFS)
-    ws["E6"] = '=IF(ISNUMBER(D6),"Ações: "&TEXT(D6*D7,"#,##0.00")&" € · ETFs: "&TEXT(D6*(1-D7),"#,##0.00")&" €","")'
+    ws["E6"] = '=IF(ISNUMBER(D6),"Ações: "&FIXED(D6*D7,2)&" € · ETFs: "&FIXED(D6*(1-D7),2)&" €","")'
     ws["E7"] = '=IF(ISNUMBER(D7),"ETFs: "&TEXT(1-D7,"0%"),"")'
     for c_ in ("E4", "E5", "E6", "E7"):
         ws[c_].font = Font(bold=True, color="7030A0")
@@ -7868,6 +7867,16 @@ def calcular_compra():
     ultima = get_column_letter(len(COLS))
     r = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"} for idx in (1, 2)])
     acoes, etfs = (list(linhas_por_cabecalho(tab, i)) for i, tab in zip((1, 2), r))
+    ocultos = set()                               # linhas escondidas pelos filtros das folhas Ações / ETFs: ficam de fora
+    try:                                          # (como na app: o que não se vê não entra na compra)
+        ro = ex.ops([op_ocultos(1), op_ocultos(2)])
+        ocultos = {txt(t).upper() for t in (ro[0] or []) + (ro[1] or [])}
+    except BaseException:
+        pass
+    if ocultos:
+        acoes = [d for d in acoes if txt(d.get("ticker")).upper() not in ocultos]
+        etfs = [d for d in etfs if txt(d.get("ticker")).upper() not in ocultos]
+        print(f"   {len(ocultos)} título(s) escondidos pelos filtros das folhas Ações / ETFs ficam de fora da compra.")
     linhas, avisos, espera_l = [], [], []
     L1_, LN_ = CMP_L0, CMP_L0 + CMP_MAX - 1
     R = lambda c, fim=LN_: f"${c}${L1_}:${c}${fim}"
@@ -7876,13 +7885,7 @@ def calcular_compra():
         esc = []
         for d in grupo:
             ng = d.get("nota_geral") if isinstance(d.get("nota_geral"), (int, float)) else d.get("nota")
-            dc_ = txt(d.get("decisao"))
-            if ": esperar" in dc_:                    # boa e barata, mas ainda não é altura: a nota de hoje está baixa
-                lm_ = LIM_ACOES if isinstance(d.get("nivel_preco"), (int, float)) else LIM_ETFS   # por causa do momento:
-                nv_ = lm_[0] if dc_.startswith(NIVEIS[5]) else lm_[1] if dc_.startswith(NIVEIS[4]) else lm_[2]   # a do nível
-                m_ = re.search(r"nota (\d+,\d+) ao confirmar", dc_)
-                nv_ = max(nv_, float(m_.group(1).replace(",", "."))) if m_ else nv_
-                ng = max(ng if isinstance(ng, (int, float)) else 0, nv_)
+            dc_ = txt(d.get("decisao"))               # V147: a nota global da tabela, também nos «esperar»
             if not isinstance(ng, (int, float)) or round(ng, 2) < mn - 1e-9:
                 continue
             if p["so_compra"] and not dc_.startswith("Compra"):
