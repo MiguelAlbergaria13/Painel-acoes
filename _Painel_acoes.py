@@ -318,6 +318,7 @@ COLS += [("ppo", "PPO 12/26 (%)", 10, "pct", "ind"), ("ppo_sinal", "PPO: linha d
          ("inc6m", "Inclinação da reta de 6 meses, cotações diárias (% por ano)", 9, "pct", "ind"),
          ("r2_6m", "Regularidade da reta de 6 meses (R², 0 a 1)", 7, "num1", "ind"),
          ("mm50", "Média 50 dias (entrada: o preço acima dela = estabilizou)", 10, "preco", "ind"),
+         ("arranque", "Início de subida depois de 120 dias parada (1 = sim)", 7, "int", "ind"),
          ("vol1a", "Volatilidade do último ano (desvio-padrão anual das variações diárias) (%)", 9, "pct", "ind"),
          ("rec_media", "Recomendação média dos analistas (1 compra forte … 5 venda)", 7, "num1", "ind"),
          ("fator_tend", "Fator de tendência (multiplica a nota geral)", 7, "num1", "ind"),
@@ -341,7 +342,7 @@ for _c in COLS:
 COLS = _cols + [("moeda_alt", "Moeda alternativa", 6, "txt", "ind"),
                 ("fx_alt", "Câmbio: moeda da cotação -> alternativa", 9, "geral", "ind"),
                 ("desat", "Não atualizado na última atualização parcial (1)", 5, "geral", "ind")]
-OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
+OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
            "compra", "compra_alt", "compra_pct")     # compra razoável (trigger): já não se usa; fica só a compra máxima   # corr: corretora (escondida por agora; os valores ficam)
 # larguras mais estreitas e letra 9 em algumas colunas
 _LARG = {"preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp": 30, "qual": 6, "saude_n": 6,
@@ -601,7 +602,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V142", "21/11/2026"
+VERSAO, DATA_VERSAO = "V144", "21/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -2010,6 +2011,12 @@ def pontuar(d, preco):
     compra_prox = -PROXIMO < g < 0 and g5 is not None and g > g5
     venda_prox = 0 <= g < PROXIMO and g5 is not None and g < g5
     sobe, desce = g > 0 or compra_prox, g < 0 and not compra_prox
+    # V144: arranque (só ações): conta como tendência confirmada antes de as médias cruzarem; o preço continua a contar
+    # (valor justo / analistas nas condições do sinal 5 e o nível de preço na nota global)
+    arr = bool(d.get("arranque")) and d.get("tipo") != "ETF"
+    ge, pe = (max(g, P5_TEND), max(p200, 1e-4)) if arr else (g, p200)
+    if arr:
+        sobe, desce, venda_prox, compra_prox = True, False, False, False
     queda_vigiar = False
     if rede and preco < rede and p200 < 0:         # queda brusca confirmada pela tendência (abaixo da média 200)
         p = 1
@@ -2019,8 +2026,8 @@ def pontuar(d, preco):
         p = (5 if pos6 <= ETF_TOP5 and sobe else 4 if pos6 <= ETF_TOP4 and sobe else 3 if sobe
              else 1 if (p200 < 0 and mom6 < 0) else 2)
     elif so_tend:
-        p = 4 if g >= P5_TEND and p200 > 0 else 3 if sobe and p200 > 0 else 1 if desce and p200 < 0 else 2
-    elif (g >= P5_TEND and jok(P5_J) and A >= P5_A) or (barata and sobe):
+        p = 4 if ge >= P5_TEND and pe > 0 else 3 if sobe and pe > 0 else 1 if desce and pe < 0 else 2
+    elif (ge >= P5_TEND and jok(P5_J) and A >= P5_A) or (barata and sobe):
         p = 5
     elif barata:
         p = 4 if preco > m100 else 2
@@ -2028,12 +2035,12 @@ def pontuar(d, preco):
         p = 4
     elif sobe and jok(P3_J) and A >= P3_A:
         p = 3
-    elif desce and p200 < 0 and not (J is not None and J >= P1_SALVA_J and A >= P1_SALVA_A):
+    elif desce and pe < 0 and not (J is not None and J >= P1_SALVA_J and A >= P1_SALVA_A):
         p = 1
     else:
         p = 2
     abaixo200 = False
-    if p >= 3 and p200 < 0 and (etf_mom or not so_tend):      # V132: também nos ETFs
+    if p >= 3 and pe < 0 and (etf_mom or not so_tend):      # V132: também nos ETFs
         # V130: compra só com o preço acima da média 200 (como quando só há a tendência). Barata face aos analistas
         # / valor justo, mas a cair abaixo da média 200: «Compra …: esperar» em vez de comprar já a meio da queda
         p, abaixo200 = 2, True
@@ -2047,6 +2054,9 @@ def pontuar(d, preco):
     if limitado:
         p = 2.5
     c = []
+    if arr and (g < P5_TEND or p200 < 0):
+        c.append(f"início de subida depois de {ARR_BASE} dias parada (preço acima do máximo desse período): conta já "
+                 "como tendência confirmada, antes de as médias cruzarem")
     if compra_prox:
         c.append(f"compra próxima: média 100 a {g:+.1%} da 200 e a subir (conta já como subida)")
     elif venda_prox:
@@ -2960,6 +2970,27 @@ def reta_r2(valores, por_ano):
     return float(np.exp(b) - 1), float(max(0.0, min(1.0, r2)))
 
 
+ARR_BASE, ARR_SUB = 120, 30          # arranque: 120 dias de bolsa parada (ou a descer) e depois 30 a subir
+ARR_BASE_MAX, ARR_SUB_MIN = 0.05, 0.30   # reta da base ≤ +5%/ano; reta dos 30 dias ≥ +30%/ano; preço acima do máximo
+# Testado (42 ações 2016-26; S&P 500 desde 1950): antes de as médias cruzarem, os 6 meses seguintes renderam mais do
+# que a média (ações +24% vs +17%; S&P 86% das vezes a ganhar vs 70%); nos ETFs diversificados quase não fez diferença
+# (por isso só nas ações). Ao contrário (quebra depois de parada) NÃO prevê mais queda: não há regra de venda.
+
+
+def arranque(v):
+    """True se as cotações diárias v (as mais recentes no fim) mostram um arranque: base de ARR_BASE dias parada ou a
+    descer, depois ARR_SUB dias a subir depressa e o preço acima do máximo da base."""
+    import numpy as np
+    if v is None or len(v) < ARR_BASE + ARR_SUB + 1:
+        return False
+    v = np.asarray(v, dtype=float)
+    base, rec = v[-(ARR_BASE + ARR_SUB + 1):-(ARR_SUB + 1)], v[-(ARR_SUB + 1):]
+    if (base <= 0).any() or (rec <= 0).any():
+        return False
+    sl = lambda y: float(np.exp(np.polyfit(np.arange(len(y)), np.log(y), 1)[0] * 252) - 1)
+    return sl(base) <= ARR_BASE_MAX and sl(rec) >= ARR_SUB_MIN and v[-1] > base.max()
+
+
 def inclin_recentes(cl):
     """Retas do último ano (252 dias) e dos últimos 6 meses (126 dias) das cotações diárias -> dicionário."""
     out = {}
@@ -2968,6 +2999,8 @@ def inclin_recentes(cl):
     import numpy as np
     if len(cl) >= 50:
         out["mm50"] = float(cl.iloc[-50:].mean())
+    if len(cl) >= ARR_BASE + ARR_SUB + 1:
+        out["arranque"] = 1 if arranque(cl.to_numpy(dtype=float)) else 0
     for k, r2k, n in (("inc1a", "r2_1a", 252), ("inc6m", "r2_6m", 126)):
         if len(cl) >= int(n * 0.9):
             out[k], out[r2k] = reta_r2(cl.iloc[-n:].to_numpy(dtype=float), 252)
@@ -5793,7 +5826,7 @@ function compra(){
   <div class="chk"><label><input type="checkbox" id="cvq"${ck(c.vq)}> Mostrar os «Não quero»</label></div>
   <div class="chk"><label><input type="checkbox" id="cvd"${ck(c.vd)}> Mostrar os «Não disponível»</label></div>
   <div class="chk"><label><input type="checkbox" id="cvn"${ck(c.vn)}> Mostrar títulos com compra nula</label><button class="inf" data-i="i3">i</button></div>
-  <div class="infx" id="i3">Títulos que ficam com 0% do grupo (0 €): os marcados «Não quero» ou «Não disponível». Desligado: nenhum deles aparece. Ligado: aparecem os escolhidos nos dois quadrados de cima.</div>
+  <div class="infx" id="i3">Títulos com 0 € (0% do grupo). Cada quadrado desligado esconde sempre: sem este, nenhum título com 0 € aparece; sem os de cima, os «Não quero» / «Não disponível» nunca aparecem. O que não aparece (também pela procura) não recebe valor: o dinheiro do grupo vai só para os que se veem.</div>
   <div id="cx" style="color:var(--mu);font-size:11px;margin-top:4px"></div></div><div id="cr"></div>`;
 }
 function calcCompra(){
@@ -5820,11 +5853,14 @@ function calcCompra(){
       if(d.x&&!c.h)continue;
       esc_.push({...d,ngc:ng});}
     esc_.sort((a,b)=>b.ngc-a.ngc);
-    const T=d=>String(d.t||'').toUpperCase(),fora=d=>nq.has(T(d))||nd.has(T(d)),soma=esc_.filter(d=>!fora(d)).reduce((s,d)=>s+d.ngc,0);
+    const T=d=>String(d.t||'').toUpperCase(),acha=d=>!q||(d.n+' '+d.c+' '+d.t).toLowerCase().includes(q);
+    // o que não aparece (procura, «não quero», «não disponível») fica sem valor; cada quadrado desligado esconde sempre
+    const fora=d=>nq.has(T(d))||nd.has(T(d))||!acha(d),soma=esc_.filter(d=>!fora(d)).reduce((s,d)=>s+d.ngc,0);
+    const wd=d=>fora(d)||!soma?0:d.ngc/soma;
     let tv=0;
-    const vis=d=>!fora(d)||(c.vn&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d))));   // compra nula (0 €): esconder?
-    const cards=esc_.filter(d=>vis(d)&&(!q||(d.n+' '+d.c+' '+d.t).toLowerCase().includes(q))).map(d=>{
-      const f=fora(d),w=f||!soma?0:d.ngc/soma,v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
+    const vis=d=>acha(d)&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d)))&&(c.vn||wd(d)>0);
+    const cards=esc_.filter(vis).map(d=>{
+      const f=fora(d),w=wd(d),v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
       return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corT(d)}">${num(d.ngc,2)}</div>
       <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
       <div class="px">${eur(v)}<span>${num(w*100,1)}% do grupo</span></div></div>
@@ -5832,7 +5868,7 @@ function calcCompra(){
       <div class="lv3"><div>Preço atual<b>${pr(d.p)} ${esc(d.m)}</b></div><div>Preço compra (Limite)<b class="cmx">${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
       <div>Nº de ações<b>${na==null?'–':num(na,2)}</b></div></div>
       <div class="cbt"><button data-k="nq" data-t="${esc(T(d))}" class="${nq.has(T(d))?'on':''}">Não quero</button><button data-k="nd" data-t="${esc(T(d))}" class="${nd.has(T(d))?'on':''}">Não disponível</button></div></div>`;});
-    esc_.forEach(d=>{if(!fora(d)&&soma)tv+=d.ngc/soma*val;});
+    esc_.forEach(d=>{tv+=wd(d)*val;});
     const nesc=esc_.filter(d=>!vis(d)).length;
     h+=`<h2 class="sec">${nome} (${esc_.filter(d=>!fora(d)).length}) · ${eur(tv)}${nesc?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· ${nesc} escondido${nesc>1?'s':''}</span>`:''}</h2>`+(esc_.length?cards.join(''):
       `<div class="card" style="color:var(--mu)">Nenhum título cumpre os critérios: os ${eur(val)} ficam por investir (baixa a nota mínima ou desliga «só com decisão de compra»).</div>`);
@@ -7616,9 +7652,9 @@ CMP_L0 = 13                     # primeira linha da tabela de resultados da folh
 CMP_MAX = 150
 CMP_CAB = ("Não quero (x)", "Não disponível (x)", "Título", "Ticker", "Tipo", "Nota global", "Decisão", "Preço atual",
            "Compra máxima (ordem limite)", "Compra máxima / atual (%)", "Peso no grupo (%)", "Valor a investir (€)",
-           "Nº de ações (aprox.)", "Tenho", "Câmbio para €", "Moeda", "Escala")
+           "Nº de ações (aprox.)", "Tenho", "Câmbio para €", "Moeda", "Escala", "Visível")
 # colunas da tabela (letras)
-CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, CESC = "ABCDEFGHIJKLMNOPQ"
+CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, CESC, CVIS = "ABCDEFGHIJKLMNOPQR"
 
 
 def _nota_txt_formula(cel, lims=None):
@@ -7643,6 +7679,7 @@ def folha_compra(wb):
                 "euros (aproximado). Para tirar um título, põe x na coluna A («Não quero») ou B («Não disponível», p. "
                 "ex. a corretora não o tem): fica riscado, com 0 €, e os valores dos outros do mesmo grupo recalculam-se "
                 "logo (também ao mudar o valor total ou a % em ações). Os x ficam guardados para os próximos cálculos. "
+                "As linhas escondidas com os filtros do cabeçalho também ficam com 0 € (o valor passa para as que se veem). "
                 "Decisão a lilás («Compra …: esperar»): título bom e barato cujo momento ainda não é de compra; entra "
                 "como os outros (com a «nota ao confirmar» que a decisão mostra) e a decisão diz o que esperar (preço acima da média 200 "
                 "ou 50 dias e/ou até à compra máxima): usa a ordem limite ou põe x em «Não quero» se preferires esperar.")
@@ -7699,6 +7736,8 @@ def folha_compra(wb):
     ws.column_dimensions[CFX].hidden = True
     ws.column_dimensions[CMO].hidden = True
     ws.column_dimensions[CESC].hidden = True       # 1 = com nível de preço (limites 3,95/3,5/3), senão 4,5/3,75/2,75
+    ws.column_dimensions[CVIS].hidden = True       # 1 = linha à vista; 0 = escondida pelo filtro (fica sem valor)
+    ws.auto_filter.ref = f"A{CMP_L0 - 1}:{CESC}{CMP_L0 + CMP_MAX - 1}"   # filtros: o que se esconde fica a 0 €
     a0, an = CMP_L0, CMP_L0 + CMP_MAX
     from openpyxl.formatting.rule import Rule as Rule_, FormulaRule as FR
     from openpyxl.styles.differential import DifferentialStyle as DS_
@@ -7822,14 +7861,15 @@ def calcular_compra():
             fx = 1.0 if txt(d.get("moeda")) == "EUR" else (d.get("fx_alt") if txt(d.get("moeda_alt")) == "EUR" else None)
             tk = txt(d.get("ticker"))
             fora = f'OR(LOWER(TRIM(${CQ}{r_}))="x",LOWER(TRIM(${CND}{r_}))="x")'
-            peso = (f'=IF({fora},0,IFERROR(${CNT}{r_}/SUMIFS({R(CNT)},{R(CTP)},"{tipo}",{R(CQ)},"<>x",{R(CND)},"<>x"),0))')
+            peso = (f'=IF(OR({fora},${CVIS}{r_}=0),0,IFERROR(${CNT}{r_}/SUMIFS({R(CNT)},{R(CTP)},"{tipo}",{R(CQ)},"<>x",'
+                    f'{R(CND)},"<>x",{R(CVIS)},1),0))')                 # o que está escondido pelo filtro fica a 0
             linhas.append(["x" if tk.upper() in excluir else "", "x" if tk.upper() in indisp else "",
                            txt(d.get("nome")) or tk, tk, tipo, round(ng, 2), txt(d.get("decisao")), pr, d.get("teto"),
                            d.get("teto_pct"), peso, f"={CPS}{r_}*{val_g}",
                            f'=IF(AND(ISNUMBER({CPR}{r_}),ISNUMBER({CFX}{r_}),{CPR}{r_}>0,{CVL}{r_}>0),'
                            f'{CVL}{r_}/({CPR}{r_}*{CFX}{r_}),"")',
                            "★" if tem else "", fx if isinstance(fx, (int, float)) else None, txt(d.get("moeda")),
-                           1 if isinstance(d.get("nivel_preco"), (int, float)) else 0])
+                           1 if isinstance(d.get("nivel_preco"), (int, float)) else 0, f"=SUBTOTAL(103,${CT}{r_})"])
         r_ = CMP_L0 + len(linhas)
         lin_t = [""] * len(CMP_CAB)
         lin_t[2] = f"Total {'ações' if nome_g == 'Ações' else 'ETFs'}"
@@ -7921,18 +7961,19 @@ def folha_historico(wb, linhas=(), etfs=()):
     ws.row_dimensions[2].height = 80
     amarelo = PatternFill("solid", fgColor="FFF2CC")
     borda = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
-    ws["B4"], ws["C4"] = f"Período (anos, até {HIS_ANOS_MAX}; =4/52 para 4 semanas)", g.get("anos") or 1
-    ws["B5"], ws["C5"] = "Um ponto a cada (dias de bolsa: 3 = máximo detalhe, 5 = semana)", g.get("passo") or 5
+    ws["B4"], ws["C4"] = f"Período (anos, até {HIS_ANOS_MAX}; =4/52 = 4 semanas)", g.get("anos") or 1
+    ws["B5"], ws["C5"] = "Um ponto a cada N dias de bolsa (3 a 21; 5 = semana)", g.get("passo") or 5
     for c_ in ("B4", "B5"):
-        ws[c_].font = Font(bold=True, size=9)
-        ws[c_].alignment = Alignment(wrap_text=True, vertical="center")
-    ws.row_dimensions[4].height = ws.row_dimensions[5].height = 36
+        ws[c_].font = Font(bold=True, size=8)
+        ws[c_].alignment = Alignment(wrap_text=False, vertical="center", shrink_to_fit=True)
+    ws.row_dimensions[4].height = ws.row_dimensions[5].height = 14     # linhas baixas
     for c_ in ("C4", "C5"):
-        ws[c_].fill, ws[c_].border, ws[c_].font = amarelo, borda, Font(bold=True, size=12)
+        ws[c_].fill, ws[c_].border, ws[c_].font = amarelo, borda, Font(bold=True, size=9)
+        ws[c_].alignment = Alignment(horizontal="center", vertical="center")
     ws["C4"].number_format = "0.00"
     ws["D4"] = '=IF(ISNUMBER(C4),TEXT(C4*52,"0")&" semanas","")'
     ws["D4"].font = Font(size=9, color="7030A0")
-    botao(ws, "K4", "▶ GERAR HISTÓRICO", "painelacoes://historico", "1F4E79", "16365C", 14)
+    botao(ws, "K4", "▶ GERAR HISTÓRICO", "painelacoes://historico", "1F4E79", "16365C", 10)
     ws.merge_cells("K4:M5")
     cab = ("Ticker", "Título", "Pontos em compra: esperar", "Compra forte", "Compra média", "Compra", "Manter", "Venda",
            "Decisão no último ponto")
@@ -8963,6 +9004,10 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
         return np.exp(cov / vk * 252) - 1, (cov * cov / (vk * vy)).clip(0, 1)
     i1, q1 = inclin_d(252)
     i6, q6 = inclin_d(126)
+    iB = inclin_d(ARR_BASE)[0].shift(ARR_SUB + 1)            # arranque: base parada e depois subida rápida
+    iR = inclin_d(ARR_SUB + 1)[0]
+    mxB = P.rolling(ARR_BASE, min_periods=int(ARR_BASE * 0.9)).max().shift(ARR_SUB + 1)
+    arrq = (iB <= ARR_BASE_MAX) & (iR >= ARR_SUB_MIN) & (P > mxB)
     v1 = r.rolling(252, min_periods=200).std() * np.sqrt(252)
     dias = [d for d in dias if d in P.index]
     out = pd.DataFrame(index=pd.DatetimeIndex(sorted(set(dias))), columns=P.columns, dtype=float)
@@ -8980,7 +9025,8 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
             if pd.isna(pr) or nval.at[dia, t] < 200 or pd.isna(m200.at[dia, t]):
                 continue
             d = {"tipo": tipos.get(t) or "Ação", "mm100c": float(m100.at[dia, t]), "mm200c": float(m200.at[dia, t]),
-                 "mm50": float(m50.at[dia, t]) if pd.notna(m50.at[dia, t]) else None, "preco": float(P.at[dia, t])}
+                 "mm50": float(m50.at[dia, t]) if pd.notna(m50.at[dia, t]) else None, "preco": float(P.at[dia, t]),
+                 "arranque": 1 if bool(arrq.at[dia, t]) else 0}
             pos5 = P.index.get_loc(dia) - 5
             if pos5 >= 0 and pd.notna(gap.iloc[pos5][t]):
                 d["gap5"] = float(gap.iloc[pos5][t])
