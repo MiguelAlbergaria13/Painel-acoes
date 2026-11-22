@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V149", "22/11/2026"
+VERSAO, DATA_VERSAO = "V151", "22/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -2088,7 +2088,7 @@ def pontuar(d, preco):
     if d.get("_recup"):
         c.append("RECUPERAÇÃO: caiu do máximo de 1 ano e voltou a subir com força (reta 60 dias ≥ +30%/ano, acima da "
                  "média 50" + ("" if etf_ else " e da 200") + ")" + (f", há {int(rd)} dias de bolsa" if rd else "")
-                 + ": sinal 5, a decisão sobe um nível e o fator ignora a queda do último ano")
+                 + ": sinal 5 e o fator ignora a queda do último ano")
     elif recup:
         c.append("recuperação, mas não conta: " + ("abaixo da rede de segurança" if rede and preco < rede
                                                    else "cara face ao valor justo / analistas"))
@@ -3562,9 +3562,8 @@ def folha_pesos(wb):
                  "preço × peso E63) / (E62 + E63). Com 2 e 1: dois terços nota geral, um terço preço. Sem nível de preço "
                  "(p. ex. ETFs sem ações conhecidas), a nota global é a nota geral. A DECISÃO segue a nota global: ≥ 3,95 compra forte, "
                  "≥ 3,5 compra média, ≥ 3 compra (sem nível de preço: os limites da nota geral, 4,5 / 3,75 / 2,75); "
-                 "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. V148: a compra forte só aparece no "
-                 "MOMENTO CERTO (recuperação depois de uma queda: ver os comentários), que também sobe um "
-                 "nível (média → forte, compra → média); sem ele, uma nota de forte fica em compra média.")
+                 "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. Numa RECUPERAÇÃO depois de uma "
+                 "queda (linhas 66-68) a decisão diz «(recuperação)»; o nível continua a ser o da nota global.")
     ws["C61"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C61"].font = Font(size=9)
     ws.row_dimensions[61].height = 90
@@ -3584,11 +3583,12 @@ def folha_pesos(wb):
     ws["B64"] = "Calibração com os analistas"
     ws["B64"].font = Font(bold=True)
     # --- recuperação: quanto tempo fica a compra forte (V148) ---
-    ws.cell(66, 2, "Recuperação: quanto tempo fica a compra forte").font = Font(bold=True, size=12)
-    ws["C66"] = ("A compra forte só aparece numa RECUPERAÇÃO: o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%, "
+    ws.cell(66, 2, "Recuperação: quanto tempo fica assinalada").font = Font(bold=True, size=12)
+    ws["C66"] = ("RECUPERAÇÃO (sinal 5, o fator ignora a queda do último ano e a decisão diz «(recuperação)»; o nível "
+                 "continua a ser o da nota global): o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%, "
                  "e pelo menos 0,4 × a volatilidade), voltou a subir com força (reta dos últimos 60 dias ≥ +30%/ano) e está "
                  "acima da média 50 (ações: também da 200). Fica no dia do sinal e mais os dias de bolsa em baixo (≈ 21 por "
-                 "mês), enquanto o preço estiver acima da média 50; depois passa a compra média ou compra, conforme a nota. "
+                 "mês), enquanto o preço estiver acima da média 50. "
                  "Testes (6 meses depois, face ao normal do título): AÇÕES com 20 dias +7,0% (81% a ganhar) nas 20 dos EUA e "
                  "+4,9% em 11 outras; com 45 dias +6,9% (82%) e +2,1%: a forte dura mais e apanha mais inícios de subida "
                  "(32% vs 27%), mas perde alguma vantagem fora da amostra. ETFs com 60 dias: +12,2% (78%). A vantagem está "
@@ -3699,7 +3699,6 @@ def compra_espera(d):
         nivel = None
     if nivel is None:
         return None
-    nivel = min(nivel, 4)                              # V148: a forte precisa do momento certo (que aqui falta)
     pr = d.get("preco") if isinstance(d.get("preco"), (int, float)) else d.get("_preco_sinal")
     m50, teto, m200 = d.get("mm50"), d.get("teto"), d.get("mm200c")
     falta = []
@@ -3744,16 +3743,12 @@ def decisao_global(d):
         nivel = 5 if ng >= GERAL_LIM[0] else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
     else:                                              # sem nível de preço: a nota global é a global, limites de sempre
         nivel = 5 if nt >= 4.5 else 4 if nt >= 3.75 else 3 if nt >= 2.75 else None
-    mom = momento_compra(d)
-    if mom and nivel in (3, 4):                        # V148: no momento certo sobe um nível
-        nivel += 1
-    elif nivel == 5 and not mom:                       # compra forte só no momento certo; sem ele, compra média
-        nivel = 4
+    mom = momento_compra(d)                            # V151: a recuperação não muda o nível; só fica indicada
     if nivel is None:
         return ("Manter (nota global baixa: negócio, tendência ou preço)" if isinstance(d.get("nivel_preco"), (int, float))
                 else "Manter (qualidade / saúde fracas)") + cara
-    return (NIVEIS[nivel] + (f" ({mom})" if mom and nivel >= 4 else "") + (" (antecipada)" if d.get("_cprox") else "")
-            + cara)
+    motivo = f" ({mom})" if mom else ""
+    return NIVEIS[nivel] + motivo + (" (antecipada)" if d.get("_cprox") else "") + cara
 
 
 def nota_global(d):
@@ -6019,7 +6014,7 @@ function calcCompra(){
   const c0=cmpCfg();
   if(['a','e','t','p','s','h','vq','vd','vn'].some(k=>c[k]!==c0[k])){c.ts=Date.now();try{localStorage.setItem('cmp_cfg',JSON.stringify(c));}catch(e){}}
   const X=cmpX(),nq=new Set(X.nq),nd=new Set(X.nd),q=(document.getElementById('q').value||'').trim().toLowerCase();
-  const txtN=(v,L)=>v>=L[0]?'= nível de forte (só no momento certo)':v>=L[1]?'= Compra média':v>=L[2]?'= Compra':'= abaixo de Compra (entram títulos que o painel não aconselha comprar)';
+  const txtN=(v,L)=>v>=L[0]?'= Compra forte':v>=L[1]?'= Compra média':v>=L[2]?'= Compra':'= abaixo de Compra (entram títulos que o painel não aconselha comprar)';
   const LA=[3.95,3.5,3],LE=[4.5,3.75,2.75];
   g('cx').textContent=`Ações ${txtN(c.a,LA)} · ETFs ${txtN(c.e,LE)} · ações ${eur(c.t*c.p/100)} · ETFs ${eur(c.t*(1-c.p/100))}`;
   let h='';
@@ -7867,7 +7862,7 @@ CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, 
 def _nota_txt_formula(cel, lims=None):
     """Fórmula que diz a que corresponde a nota global mínima (mesmos limites da decisão)."""
     a, b, c = lims or LIM_ACOES
-    return (f'=IF(ISNUMBER({cel}),IF({cel}>={a},"= nível de Compra forte (forte só no momento certo; senão média)",'
+    return (f'=IF(ISNUMBER({cel}),IF({cel}>={a},"= Compra forte",'
             f'IF({cel}>={b},"= Compra média",IF({cel}>={c},'
             f'"= Compra","= abaixo de Compra (Manter): entram títulos que o painel não aconselha comprar"))),"")')
 
