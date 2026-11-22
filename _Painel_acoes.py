@@ -320,6 +320,10 @@ COLS += [("ppo", "PPO 12/26 (%)", 10, "pct", "ind"), ("ppo_sinal", "PPO: linha d
          ("mm50", "Média 50 dias (entrada: o preço acima dela = estabilizou)", 10, "preco", "ind"),
          ("arranque", "Início de subida depois de 120 dias parada (1 = sim)", 7, "int", "ind"),
          ("sub60", "Subida forte e regular nos últimos 60 dias (1 = sim)", 7, "int", "ind"),
+         ("max1a", "Máximo de 1 ano (para a recuperação)", 10, "preco", "ind"),
+         ("inc60", "Reta dos últimos 60 dias (subida por ano)", 8, "pct", "ind"),
+         ("rec_a", "Dias de bolsa desde o último sinal de recuperação (regra das ações)", 7, "int", "ind"),
+         ("rec_e", "Dias de bolsa desde o último sinal de recuperação (regra dos ETFs)", 7, "int", "ind"),
          ("vol1a", "Volatilidade do último ano (desvio-padrão anual das variações diárias) (%)", 9, "pct", "ind"),
          ("rec_media", "Recomendação média dos analistas (1 compra forte … 5 venda)", 7, "num1", "ind"),
          ("fator_tend", "Fator de tendência (multiplica a nota geral)", 7, "num1", "ind"),
@@ -343,7 +347,7 @@ for _c in COLS:
 COLS = _cols + [("moeda_alt", "Moeda alternativa", 6, "txt", "ind"),
                 ("fx_alt", "Câmbio: moeda da cotação -> alternativa", 9, "geral", "ind"),
                 ("desat", "Não atualizado na última atualização parcial (1)", 5, "geral", "ind")]
-OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "sub60", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
+OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "sub60", "max1a", "inc60", "rec_a", "rec_e", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
            "compra", "compra_alt", "compra_pct")     # compra razoável (trigger): já não se usa; fica só a compra máxima   # corr: corretora (escondida por agora; os valores ficam)
 # larguras mais estreitas e letra 9 em algumas colunas
 _LARG = {"preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp": 30, "qual": 6, "saude_n": 6,
@@ -603,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V147", "21/11/2026"
+VERSAO, DATA_VERSAO = "V149", "22/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1539,10 +1543,14 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         for i_, cor in enumerate(("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
             la, le = (LIM_ACOES + (2.25, 1.5, -99))[i_], (LIM_ETFS + (2.25, 1.5, -99))[i_]
             lim = f"IF(ISNUMBER(${nvl}{L0+1}),{la},{le})" if la != le else la   # ETFs com nível (das ações) = ações
-            for k in ("nota_geral", "decisao"):       # nota global e decisão (que segue a nota global)
-                ws.conditional_formatting.add(faixa(k), FormulaRule(
-                    formula=[f"AND(ISNUMBER(${ngl}{L0+1}),${ngl}{L0+1}>={lim})"], fill=PatternFill("solid", bgColor=cor),
-                    font=Font(bold=k == "nota_geral" or i_ == 0), stopIfTrue=True))
+            ws.conditional_formatting.add(faixa("nota_geral"), FormulaRule(
+                formula=[f"AND(ISNUMBER(${ngl}{L0+1}),${ngl}{L0+1}>={lim})"], fill=PatternFill("solid", bgColor=cor),
+                font=Font(bold=True), stopIfTrue=True))
+        for txt_, cor, b_ in (("Compra forte", "63BE7B", True), ("Compra média", "A9D18E", False),
+                              ("Compra", "E2EFDA", False), ("Manter", "FFEB9C", False)):
+            ws.conditional_formatting.add(faixa("decisao"), FormulaRule(   # V148: a cor da decisão segue o texto
+                formula=[f'LEFT({dc}{L0+1},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor),
+                font=Font(bold=b_), stopIfTrue=True))
     for v, cor in ((5, "63BE7B"), (4, "A9D18E"), (3, "E2EFDA"), (2.5, "F4B183"), (2, "FFEB9C"), (1, "F8696B")):
         for k in ("pont",):                           # pontuação do sinal: 5 verde-escuro … 1 vermelho
             ws.conditional_formatting.add(faixa(k), FormulaRule(
@@ -2022,6 +2030,21 @@ def pontuar(d, preco):
     s60 = bool(d.get("sub60")) and d.get("tipo") != "ETF" and g > 0 and p200 > 0 and g < P5_TEND
     if s60:
         ge = max(ge, P5_TEND)
+    # V148: recuperação (ver REC_*): hoje, ou nos últimos REC_JANELA dias com o preço ainda acima da média 50
+    etf_ = txt(d.get("tipo")) == "ETF"
+    rd = d.get("rec_e" if etf_ else "rec_a")
+    rd = rd if isinstance(rd, (int, float)) else None
+    m50_ = d.get("mm50") if isinstance(d.get("mm50"), (int, float)) else None
+    acima50 = bool(m50_) and preco > m50_
+    jan_ = int(PESOS.get("rec_jan_etf", REC_JANELA_ETF) if etf_ else PESOS.get("rec_jan", REC_JANELA))
+    rec_hoje = recuperacao(d, preco)
+    recup = rec_hoje or (rd is not None and rd <= jan_ and acima50)
+    pos_rec = not recup and rd is not None and rd <= max(REC_PROTEGE, jan_) and acima50
+    if recup or (pos_rec and etf_):              # recuperação (ETFs: também depois): tendência a subir
+        sobe, desce, venda_prox = True, False, False
+        pe = max(pe, 1e-4)
+    elif pos_rec:                                # ações, depois da janela: só não vende por as médias não terem cruzado
+        desce = False                            # (nos testes, comprar nesta fase não rendeu mais nas ações)
     queda_vigiar = False
     if rede and preco < rede and p200 < 0:         # queda brusca confirmada pela tendência (abaixo da média 200)
         p = 1
@@ -2051,6 +2074,9 @@ def pontuar(d, preco):
         p, abaixo200 = 2, True
     if venda_prox and p > 2:
         p = 2
+    d["_recup"] = None
+    if recup and not (rede and preco < rede) and (so_tend or etf_mom or (jok(P3_J) and A >= P3_A)):
+        p, abaixo200, d["_recup"] = 5, False, True     # com analistas: só se não estiver cara
     lp = lp_travao(d)
     lp_fraco = lp is not None and lp < LP_MIN and not PESOS.get("ft_usar", 1)   # com o fator: sem travão
     limitado = lp_fraco and p >= 3                 # seria compra, mas não rende a longo prazo -> 2.5
@@ -2059,6 +2085,16 @@ def pontuar(d, preco):
     if limitado:
         p = 2.5
     c = []
+    if d.get("_recup"):
+        c.append("RECUPERAÇÃO: caiu do máximo de 1 ano e voltou a subir com força (reta 60 dias ≥ +30%/ano, acima da "
+                 "média 50" + ("" if etf_ else " e da 200") + ")" + (f", há {int(rd)} dias de bolsa" if rd else "")
+                 + ": sinal 5, a decisão sobe um nível e o fator ignora a queda do último ano")
+    elif recup:
+        c.append("recuperação, mas não conta: " + ("abaixo da rede de segurança" if rede and preco < rede
+                                                   else "cara face ao valor justo / analistas"))
+    elif pos_rec:
+        c.append(f"recuperação há {int(rd)} dias de bolsa e o preço acima da média 50: "
+                 + ("conta como tendência a subir" if etf_ else "não vende por as médias ainda não terem cruzado"))
     if s60 and not arr:
         c.append(f"subida forte e regular nos últimos {SUB60_D} dias (≥ {SUB60_MIN:+.0%}/ano): conta como tendência "
                  "forte, sem esperar que as médias se afastem 5%")
@@ -2655,7 +2691,8 @@ PESOS_PROPOSTOS = {"pont": 0.30, "qual": 0.30, "saude": 0.20, "tend": 0.20,
                    "ft_usar": 1, "ft_s": 0.10, "ft_10": 0.15, "ft_5": 0.20, "ft_1": 0.35, "ft_6": 0.20,
                    "ft_mult": 2.0, "ft_r2": 1, "ft_lim": 0.60, "ft_vol": 1, "ft_vol0": 0.25, "ft_volpen": 0.03,
                    "ft_sub": 0.05, "ft_sub_etf": 0.02, "ft_vol0_etf": 0.35,
-                   "ft_bonus": 1, "ft_bmax": 0.09, "ft_bvol": 0.20, "g_nota": 2.0, "g_preco": 1.0}
+                   "ft_bonus": 1, "ft_bmax": 0.09, "ft_bvol": 0.20, "g_nota": 2.0, "g_preco": 1.0,
+                   "rec_jan": 45, "rec_jan_etf": 60}
 CALIB = {}                 # calibração da nota global com os analistas (último cálculo)
 FICH_CALIB = os.path.join(PASTA, BASE + "_calibracao_nota_geral.json")
 # Fator de tendência (folha Ponderações): média ponderada das inclinações das retas (desde sempre, 10 e 5 anos com
@@ -2759,7 +2796,8 @@ def carregar_pesos(ex=None):
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "D31:E31"}, {"op": "ler", "folha": FOLHA_PESOS, "rng": "B34:E35"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "B38:E58"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "H2"},
-                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B62:E63"}])
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B62:E63"},
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B67:E68"}])
             antiga = not txt(r[3][0][0]).startswith("ETFs: tendência")   # folha da V039: sem os quadros novos
             if antiga:
                 r[1][2][0], r[2][0][0], r[2][1][0] = 0, 0, 0
@@ -2797,6 +2835,13 @@ def carregar_pesos(ex=None):
                 if k_:
                     try:
                         lidos[k_] = max(0.0, float(str(lin[3]).replace(",", ".")))
+                    except (TypeError, ValueError):
+                        pass
+            for lin in (r[14] if len(r) > 14 else []):                 # janelas da compra forte (V148)
+                k_ = {REC_JAN_TXT: "rec_jan", REC_JAN_ETF_TXT: "rec_jan_etf"}.get(txt(lin[0]))
+                if k_:
+                    try:
+                        lidos[k_] = int(max(0, min(REC_MEMO, round(float(str(lin[3]).replace(",", "."))))))
                     except (TypeError, ValueError):
                         pass
             if ft and txt(ft[0][2]) == FT_TXT:                    # quadro do fator de tendência (V104)
@@ -2991,6 +3036,65 @@ SUB60_D, SUB60_MIN, SUB60_R2 = 60, 0.40, 0.6   # tendência forte também com a 
 # +11,6% a 12 meses vs +7,0% das que ficam em 3); os 5% entre médias continuam (apanham outros casos).
 
 
+REC_QUEDA, REC_QUEDA_ETF, REC_I60 = -0.15, -0.20, 0.30   # recuperação (V148)
+REC_JANELA, REC_JANELA_ETF, REC_PROTEGE, REC_MEMO = 45, 60, 63, 130
+REC_JAN_TXT, REC_JAN_ETF_TXT = "Janela da compra forte (ações)", "Janela da compra forte (ETFs)"
+REC_VOL = 0.4      # a queda exigida é pelo menos 0,4 × a volatilidade anual (Tesla 60% -> queda ≥ 24%): nos títulos
+#                    muito voláteis uma queda de 15% é banal (testado: menos sinais e mais certeiros)
+# RECUPERAÇÃO: o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%; e ≥ 0,4 × volatilidade), voltou a subir com força (reta dos últimos
+# 60 dias ≥ +30%/ano) e está acima da média 50 (ações: também acima da média 200, recuperação confirmada).
+#  -> sinal 5, a decisão sobe um nível e o fator de tendência usa só o longo prazo (as quedas do último ano já não
+#     contam), durante o sinal e mais REC_JANELA dias de bolsa (ETFs REC_JANELA_ETF) com o preço acima da média 50;
+#  -> depois, até REC_PROTEGE dias com o preço acima da média 50: sem «Venda» por as médias ainda não terem cruzado
+#     (ETFs: conta como tendência a subir; nas ações comprar nesta fase não rendeu mais nos testes).
+# Testado (V148): 20 ações dos EUA 2008-26, 87% a ganhar nos 6 meses seguintes vs 70% (+13,9% face ao normal do
+# título); fora da amostra: 11 outras ações 70% vs 64%, S&P 500 desde 1950 100% vs 70% (26 casos), 27 ETFs 2000-23
+# 88% vs 60%. A vantagem cai ao fim de 1-3 meses (por isso a janela). Falha em quedas longas (2000-03).
+
+
+def recuperacao(d, preco):
+    """A regra da recuperação no preço de hoje (com os valores guardados no ▶ ATUALIZAR)."""
+    n = lambda k: d.get(k) if isinstance(d.get(k), (int, float)) else None
+    mx, i60, m50, m200, vol = n("max1a"), n("inc60"), n("mm50"), n("mm200c"), n("vol1a")
+    if not (mx and i60 is not None and m50 and preco):
+        return False
+    etf = txt(d.get("tipo")) == "ETF"
+    queda = -max(-(REC_QUEDA_ETF if etf else REC_QUEDA), REC_VOL * (vol or 0))
+    if etf:
+        return preco / mx - 1 <= queda and i60 >= REC_I60 and preco > m50
+    return preco / mx - 1 <= queda and i60 >= REC_I60 and preco > m50 and bool(m200) and preco > m200
+
+
+def _rec_sinais(P):
+    """Sinais diários da recuperação (DataFrame ou Series de cotações): (regra das ações, regra dos ETFs, reta 60 d,
+    máximo de 1 ano)."""
+    import numpy as np
+    import pandas as pd
+    df = P.to_frame() if isinstance(P, pd.Series) else P
+    df = df.astype(float)
+    LD = np.log(df)
+    kd = pd.DataFrame({c: np.arange(len(LD), dtype=float) for c in LD.columns}, index=LD.index).where(LD.notna())
+    rol = lambda x: x.rolling(61, min_periods=55)
+    mk, my, mky, mkk = rol(kd).mean(), rol(LD).mean(), rol(kd * LD).mean(), rol(kd * kd).mean()
+    i60 = np.exp((mky - mk * my) / (mkk - mk * mk) * 252) - 1
+    m50, m200 = df.rolling(50, min_periods=50).mean(), df.rolling(200, min_periods=200).mean()
+    mx = df.rolling(252, min_periods=200).max()
+    vol = LD.diff().rolling(252, min_periods=200).std() * np.sqrt(252)
+    base = (df > m50) & (i60 >= REC_I60)
+    ra = base & (df / mx - 1 <= -np.maximum(-REC_QUEDA, REC_VOL * vol.fillna(0))) & (df > m200)
+    re_ = base & (df / mx - 1 <= -np.maximum(-REC_QUEDA_ETF, REC_VOL * vol.fillna(0)))
+    return ra, re_, i60, mx
+
+
+def _dias_desde(b):
+    """Dias de bolsa desde o último True (DataFrame booleano) -> DataFrame (NaN se não houve)."""
+    import numpy as np
+    import pandas as pd
+    pos = pd.DataFrame({c: np.arange(len(b), dtype=float) for c in b.columns}, index=b.index)
+    ult = pos.where(b.fillna(False).astype(bool)).ffill()
+    return pos - ult
+
+
 def arranque(v):
     """True se as cotações diárias v (as mais recentes no fim) mostram um arranque: base de ARR_BASE dias parada ou a
     descer, depois ARR_SUB dias a subir depressa e o preço acima do máximo da base."""
@@ -3015,6 +3119,17 @@ def inclin_recentes(cl):
         out["mm50"] = float(cl.iloc[-50:].mean())
     if len(cl) >= ARR_BASE + ARR_SUB + 1:
         out["arranque"] = 1 if arranque(cl.to_numpy(dtype=float)) else 0
+    if len(cl) >= 260:                                   # recuperação (V148)
+        try:
+            ra, re_, i6_, mx_ = _rec_sinais(cl)
+            c0 = ra.columns[0]
+            out["max1a"] = float(mx_[c0].iloc[-1]) if mx_[c0].notna().iloc[-1] else None
+            out["inc60"] = float(i6_[c0].iloc[-1]) if i6_[c0].notna().iloc[-1] else None
+            for k_, b_ in (("rec_a", ra), ("rec_e", re_)):
+                dd_ = _dias_desde(b_)[c0].iloc[-1]
+                out[k_] = int(dd_) if dd_ == dd_ and dd_ <= REC_MEMO else None
+        except Exception:
+            pass
     if len(cl) >= SUB60_D + 1:
         i60, q60 = reta_r2(cl.iloc[-(SUB60_D + 1):].to_numpy(dtype=float), 252)
         out["sub60"] = 1 if (i60 is not None and q60 is not None and i60 >= SUB60_MIN and q60 >= SUB60_R2) else 0
@@ -3085,6 +3200,25 @@ def fator_tend(d):
     partes.append(("_vol", n("vol1a"), fv))
     partes.append(("_bonus", None, fb))
     return round(f * fv * fb, 2), m, partes
+
+
+def momento_compra(d):
+    """O momento certo para a compra forte (V148): a recuperação. (O arranque depois de um patamar também foi testado
+    para isto e piorou: 6 meses depois −4,7% face ao normal, 58% a ganhar; fica só no sinal, como na V144.)"""
+    return "recuperação" if d.get("_recup") else None
+
+
+def fator_tend_atual(d):
+    """Fator de tendência; no momento certo (recuperação / arranque) as quedas do último ano e dos 6 meses já não
+    contam: o fator usa só as retas de longo prazo (desde sempre, 10 e 5 anos)."""
+    if not momento_compra(d):
+        return fator_tend(d)
+    g = {k: PESOS.get(k) for k in ("ft_1", "ft_6")}
+    try:
+        PESOS["ft_1"] = PESOS["ft_6"] = 0
+        return fator_tend(d)
+    finally:
+        PESOS.update(g)
 
 
 def fator_txt(ft):
@@ -3428,10 +3562,12 @@ def folha_pesos(wb):
                  "preço × peso E63) / (E62 + E63). Com 2 e 1: dois terços nota geral, um terço preço. Sem nível de preço "
                  "(p. ex. ETFs sem ações conhecidas), a nota global é a nota geral. A DECISÃO segue a nota global: ≥ 3,95 compra forte, "
                  "≥ 3,5 compra média, ≥ 3 compra (sem nível de preço: os limites da nota geral, 4,5 / 3,75 / 2,75); "
-                 "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1.")
+                 "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. V148: a compra forte só aparece no "
+                 "MOMENTO CERTO (recuperação depois de uma queda: ver os comentários), que também sobe um "
+                 "nível (média → forte, compra → média); sem ele, uma nota de forte fica em compra média.")
     ws["C61"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C61"].font = Font(size=9)
-    ws.row_dimensions[61].height = 62
+    ws.row_dimensions[61].height = 90
     for i, (nome, kp, expl_) in enumerate((("Peso da nota geral", "g_nota", "Quanto conta a nota geral (negócio, tendência, momento)."),
                                            ("Peso do nível de preço", "g_preco", "Quanto conta o preço (valor justo, PER, FCF yield).")), 62):
         ws.cell(i, 2, nome).font = Font(bold=True)
@@ -3447,6 +3583,27 @@ def folha_pesos(wb):
     ws.row_dimensions[64].height = 92
     ws["B64"] = "Calibração com os analistas"
     ws["B64"].font = Font(bold=True)
+    # --- recuperação: quanto tempo fica a compra forte (V148) ---
+    ws.cell(66, 2, "Recuperação: quanto tempo fica a compra forte").font = Font(bold=True, size=12)
+    ws["C66"] = ("A compra forte só aparece numa RECUPERAÇÃO: o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%, "
+                 "e pelo menos 0,4 × a volatilidade), voltou a subir com força (reta dos últimos 60 dias ≥ +30%/ano) e está "
+                 "acima da média 50 (ações: também da 200). Fica no dia do sinal e mais os dias de bolsa em baixo (≈ 21 por "
+                 "mês), enquanto o preço estiver acima da média 50; depois passa a compra média ou compra, conforme a nota. "
+                 "Testes (6 meses depois, face ao normal do título): AÇÕES com 20 dias +7,0% (81% a ganhar) nas 20 dos EUA e "
+                 "+4,9% em 11 outras; com 45 dias +6,9% (82%) e +2,1%: a forte dura mais e apanha mais inícios de subida "
+                 "(32% vs 27%), mas perde alguma vantagem fora da amostra. ETFs com 60 dias: +12,2% (78%). A vantagem está "
+                 "sobretudo no dia do sinal e vai baixando. Os dias contam-se no ▶ ATUALIZAR.")
+    ws["C66"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["C66"].font = Font(size=9)
+    ws.row_dimensions[66].height = 110
+    for i, (nome, kp) in enumerate(((REC_JAN_TXT, "rec_jan"), (REC_JAN_ETF_TXT, "rec_jan_etf")), 67):
+        ws.cell(i, 2, nome).font = Font(bold=True)
+        ws.cell(i, 3, "dias de bolsa depois do sinal (0 = só nos dias do sinal; até " + str(REC_MEMO) + ")").font = Font(size=9)
+        ws.cell(i, 4, PESOS_PROPOSTOS[kp]).font = Font(color="808080")
+        e_ = ws.cell(i, 5, PESOS[kp])
+        e_.fill, e_.border, e_.font = amarelo, borda, Font(bold=True, size=12)
+        ws.cell(i, 4).number_format = e_.number_format = "0"
+        ws.cell(i, 4).alignment = e_.alignment = Alignment(horizontal="center", vertical="center")
     ws["C21"].font = Font(italic=True, size=8, color="595959")
     ws["C21"].alignment = Alignment(wrap_text=True, vertical="center")
     ws.row_dimensions[21].height = 30
@@ -3542,6 +3699,7 @@ def compra_espera(d):
         nivel = None
     if nivel is None:
         return None
+    nivel = min(nivel, 4)                              # V148: a forte precisa do momento certo (que aqui falta)
     pr = d.get("preco") if isinstance(d.get("preco"), (int, float)) else d.get("_preco_sinal")
     m50, teto, m200 = d.get("mm50"), d.get("teto"), d.get("mm200c")
     falta = []
@@ -3586,10 +3744,16 @@ def decisao_global(d):
         nivel = 5 if ng >= GERAL_LIM[0] else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
     else:                                              # sem nível de preço: a nota global é a global, limites de sempre
         nivel = 5 if nt >= 4.5 else 4 if nt >= 3.75 else 3 if nt >= 2.75 else None
+    mom = momento_compra(d)
+    if mom and nivel in (3, 4):                        # V148: no momento certo sobe um nível
+        nivel += 1
+    elif nivel == 5 and not mom:                       # compra forte só no momento certo; sem ele, compra média
+        nivel = 4
     if nivel is None:
         return ("Manter (nota global baixa: negócio, tendência ou preço)" if isinstance(d.get("nivel_preco"), (int, float))
                 else "Manter (qualidade / saúde fracas)") + cara
-    return NIVEIS[nivel] + (" (antecipada)" if d.get("_cprox") else "") + cara
+    return (NIVEIS[nivel] + (f" ({mom})" if mom and nivel >= 4 else "") + (" (antecipada)" if d.get("_cprox") else "")
+            + cara)
 
 
 def nota_global(d):
@@ -3610,7 +3774,7 @@ def nota_global(d):
         nota = (PESOS["pont"] * p + PESOS["qual"] * (q if q is not None else p)
                 + PESOS["saude"] * (sn if sn is not None else p) + PESOS["tend"] * (t if t is not None else p))
     lpt = lp_travao(d)
-    ft = fator_tend(d)
+    ft = fator_tend_atual(d)
     d["fator_tend"] = ft[0] if ft else None
     if ft:                                        # fator de tendência: multiplica a nota (em vez do travão do LP)
         nota = min(5.0, nota * ft[0])
@@ -5789,7 +5953,7 @@ const eur=v=>'€ '+num(v,2);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function cartao(d){
   const dc=d.dc||'';
-  const corDec=d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':(d.dc||'').includes(': esperar')?'#D9C3E9':(d.pt!=null&&d.pt<3)?'#FFEB9C':(d.ng!=null&&d.np!=null?corG(d.ng):cor(d.nt));
+  const corDec=d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
   const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v):cor(v);   // nota global (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
@@ -5827,8 +5991,9 @@ const cmpX=()=>{let c=null;try{c=JSON.parse(localStorage.getItem('cmp_x')||'null
   return c||{nq:(D.cmp&&D.cmp.nq)||[],nd:(D.cmp&&D.cmp.nd)||[]};};
 const nPt=v=>{const x=parseFloat(String(v).replace(/\s|€|%/g,'').replace(',','.'));return isNaN(x)?null:x;};
 const corT=d=>d.np!=null?corG(d.ngc):cor(d.ngc);   // ações com nível de preço: 3,95/3,5/3; ETFs: 4,5/3,75/2,75
-const corDecF=d=>{const dc=d.dc||'';return dc.includes(': esperar')?'#D9C3E9':/saúde frágil/i.test(dc)?'#F8CBAD':
-  dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':corT(d);};
+function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#D9C3E9':/saúde frágil/i.test(dc)?'#F8CBAD':
+  dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':
+  dc.startsWith('Compra forte')?'#63BE7B':dc.startsWith('Compra média')?'#A9D18E':dc.startsWith('Compra')?'#E2EFDA':'#FFEB9C';}
 function compra(){
   const c=cmpCfg(),ck=v=>v?' checked':'';
   return `<div class="card" id="cf" style="font-size:13px"><div class="cfg">
@@ -5854,7 +6019,7 @@ function calcCompra(){
   const c0=cmpCfg();
   if(['a','e','t','p','s','h','vq','vd','vn'].some(k=>c[k]!==c0[k])){c.ts=Date.now();try{localStorage.setItem('cmp_cfg',JSON.stringify(c));}catch(e){}}
   const X=cmpX(),nq=new Set(X.nq),nd=new Set(X.nd),q=(document.getElementById('q').value||'').trim().toLowerCase();
-  const txtN=(v,L)=>v>=L[0]?'= Compra forte':v>=L[1]?'= Compra média':v>=L[2]?'= Compra':'= abaixo de Compra (entram títulos que o painel não aconselha comprar)';
+  const txtN=(v,L)=>v>=L[0]?'= nível de forte (só no momento certo)':v>=L[1]?'= Compra média':v>=L[2]?'= Compra':'= abaixo de Compra (entram títulos que o painel não aconselha comprar)';
   const LA=[3.95,3.5,3],LE=[4.5,3.75,2.75];
   g('cx').textContent=`Ações ${txtN(c.a,LA)} · ETFs ${txtN(c.e,LE)} · ações ${eur(c.t*c.p/100)} · ETFs ${eur(c.t*(1-c.p/100))}`;
   let h='';
@@ -7702,7 +7867,8 @@ CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, 
 def _nota_txt_formula(cel, lims=None):
     """Fórmula que diz a que corresponde a nota global mínima (mesmos limites da decisão)."""
     a, b, c = lims or LIM_ACOES
-    return (f'=IF(ISNUMBER({cel}),IF({cel}>={a},"= Compra forte",IF({cel}>={b},"= Compra média",IF({cel}>={c},'
+    return (f'=IF(ISNUMBER({cel}),IF({cel}>={a},"= nível de Compra forte (forte só no momento certo; senão média)",'
+            f'IF({cel}>={b},"= Compra média",IF({cel}>={c},'
             f'"= Compra","= abaixo de Compra (Manter): entram títulos que o painel não aconselha comprar"))),"")')
 
 
@@ -7814,12 +7980,10 @@ def folha_compra(wb):
                          (f'LEFT({dcl},6)="Manter"', "FFEB9C", None)):
         ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(formula=[f_], fill=PatternFill("solid", bgColor=cor),
                                                                 font=fnt, stopIfTrue=True))
-    for i_, cor in enumerate(("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
-        la, le = (LIM_ACOES + (2.25, 1.5, -99))[i_], (LIM_ETFS + (2.25, 1.5, -99))[i_]
-        lim = f'IF(${CESC}{a0}=1,{la},{le})'          # sem nível de preço: 4,5 / 3,75 / 2,75
-        ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(
-            formula=[f'AND({dcl}<>"",ISNUMBER(${CNT}{a0}),${CNT}{a0}>={lim})'], fill=PatternFill("solid", bgColor=cor),
-            font=Font(bold=i_ == 0), stopIfTrue=True))
+    for txt_, cor, b_ in (("Compra forte", "63BE7B", True), ("Compra média", "A9D18E", False), ("Compra", "E2EFDA", False)):
+        ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(          # V148: pela decisão (forte só no momento certo)
+            formula=[f'LEFT({dcl},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor), font=Font(bold=b_),
+            stopIfTrue=True))
     res = _ler_json(FICH_COMPRA, {}).get("linhas2") or []
     for i, lin in enumerate(res[:CMP_MAX]):
         for j, v in enumerate(lin, 1):
@@ -9052,6 +9216,8 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
     i1, q1 = inclin_d(252)
     i6, q6 = inclin_d(126)
     i60s, q60s = inclin_d(SUB60_D + 1)
+    ra_, re_, _, mx1 = _rec_sinais(P)                  # recuperação (V148)
+    rda, rde = _dias_desde(ra_), _dias_desde(re_)
     sub60 = (i60s >= SUB60_MIN) & (q60s >= SUB60_R2)
     iB = inclin_d(ARR_BASE)[0].shift(ARR_SUB + 1)            # arranque: base parada e depois subida rápida
     iR = inclin_d(ARR_SUB + 1)[0]
@@ -9075,7 +9241,13 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
                 continue
             d = {"tipo": tipos.get(t) or "Ação", "mm100c": float(m100.at[dia, t]), "mm200c": float(m200.at[dia, t]),
                  "mm50": float(m50.at[dia, t]) if pd.notna(m50.at[dia, t]) else None, "preco": float(P.at[dia, t]),
-                 "arranque": 1 if bool(arrq.at[dia, t]) else 0, "sub60": 1 if bool(sub60.at[dia, t]) else 0}
+                 "arranque": 1 if bool(arrq.at[dia, t]) else 0, "sub60": 1 if bool(sub60.at[dia, t]) else 0,
+                 "max1a": float(mx1.at[dia, t]) if pd.notna(mx1.at[dia, t]) else None,
+                 "inc60": float(i60s.at[dia, t]) if pd.notna(i60s.at[dia, t]) else None}
+            for k_, df_ in (("rec_a", rda), ("rec_e", rde)):
+                v_ = df_.at[dia, t]
+                if pd.notna(v_) and v_ <= REC_MEMO:
+                    d[k_] = int(v_)
             pos5 = P.index.get_loc(dia) - 5
             if pos5 >= 0 and pd.notna(gap.iloc[pos5][t]):
                 d["gap5"] = float(gap.iloc[pos5][t])
@@ -9110,6 +9282,7 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
                 nt = nota_global(d)
             except Exception:
                 nt = None
+            d["nota"] = nt                              # V148: a decisão usa a nota (sem ela usava o sinal)
             if nt is not None:
                 out.at[dia, t] = nt
                 if decisoes is not None:                # folha Histórico: a decisão do painel nesse dia
