@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V161", "23/11/2026"
+VERSAO, DATA_VERSAO = "V162", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1627,7 +1627,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         formula=[f'AND(${cs}{L0+1}=1,{par})'], fill=PatternFill("solid", bgColor="F4B6B6"), stopIfTrue=True))
     ws.conditional_formatting.add(tudo, FormulaRule(                   # vermelho claro / rosa claro em vez dos cinzentos
         formula=[f'${cs}{L0+1}=1'], fill=PatternFill("solid", bgColor="FCE4EC"), stopIfTrue=True))
-    if not PESOS.get("usar_analistas", 0):            # V161: analistas fora do sinal: colunas a cinzento, só indicativas
+    if not PESOS.get("usar_analistas", 1):            # V161: analistas fora do sinal: colunas a cinzento, só indicativas
         for k_ in ("alvo", "alvo_alt", "pot", "rec"):
             if k_ in COL:
                 cl_ = let(COL[k_])
@@ -2020,7 +2020,7 @@ def pontuar(d, preco):
         return
     g, p200 = m100 / m200 - 1, preco / m200 - 1
     J, A = n("justo_pct"), n("pot")
-    if not PESOS.get("usar_analistas", 0) and txt(d.get("tipo")) != "ETF":
+    if not PESOS.get("usar_analistas", 1) and txt(d.get("tipo")) != "ETF":
         A = 1e9                                    # V160: sem analistas no sinal: as condições deles contam como cumpridas
     rede = n("venda_min")          # rede de segurança: queda demasiado grande face ao máximo de 6 meses, em qualquer tendência
     so_tend = A is None
@@ -2710,7 +2710,7 @@ PESOS_PROPOSTOS = {"pont": 0.30, "qual": 0.30, "saude": 0.20, "tend": 0.20,
                    "ft_mult": 2.0, "ft_r2": 1, "ft_lim": 0.60, "ft_vol": 1, "ft_vol0": 0.25, "ft_volpen": 0.03,
                    "ft_sub": 0.05, "ft_sub_etf": 0.02, "ft_vol0_etf": 0.35,
                    "ft_bonus": 1, "ft_bmax": 0.09, "ft_bvol": 0.20, "g_nota": 2.0, "g_preco": 1.0,
-                   "rec_jan": 45, "rec_jan_etf": 60, "usar_analistas": 0}
+                   "rec_jan": 45, "rec_jan_etf": 60, "usar_analistas": 1}
 CALIB = {}                 # calibração da nota global com os analistas (último cálculo)
 FICH_CALIB = os.path.join(PASTA, BASE + "_calibracao_nota_geral.json")
 # Fator de tendência (folha Ponderações): média ponderada das inclinações das retas (desde sempre, 10 e 5 anos com
@@ -2856,8 +2856,8 @@ def carregar_pesos(ex=None):
                         lidos[k_] = max(0.0, float(str(lin[3]).replace(",", ".")))
                     except (TypeError, ValueError):
                         pass
-            if len(r) > 15 and txt(r[15][0][0]) == USAR_ANALISTAS_TXT:   # V160: analistas no sinal (x = sim)
-                lidos["usar_analistas"] = 1 if txt(r[15][0][1]).lower() == "x" else 0
+            if len(r) > 15 and txt(r[15][0][0]) == USAR_ANALISTAS_TXT:   # V162: x = ignorar os analistas
+                lidos["usar_analistas"] = 0 if txt(r[15][0][1]).lower() == "x" else 1
             else:
                 lidos["usar_analistas"] = PESOS_PROPOSTOS["usar_analistas"]
             for lin in (r[14] if len(r) > 14 else []):                 # janelas da compra forte (V148)
@@ -3062,7 +3062,7 @@ SUB60_D, SUB60_MIN, SUB60_R2 = 60, 0.40, 0.6   # tendência forte também com a 
 REC_QUEDA, REC_QUEDA_ETF, REC_I60 = -0.15, -0.20, 0.30   # recuperação (V148)
 REC_JANELA, REC_JANELA_ETF, REC_PROTEGE, REC_MEMO = 45, 60, 63, 130
 REC_JAN_TXT, REC_JAN_ETF_TXT = "Janela da compra forte (ações)", "Janela da compra forte (ETFs)"
-USAR_ANALISTAS_TXT = "Usar os analistas no sinal (x):"   # V160
+USAR_ANALISTAS_TXT = "Ignorar os analistas no sinal (x):"   # V162 (V160-V161: «Usar …», ignorado)
 REC_VOL = 0.4      # a queda exigida é pelo menos 0,4 × a volatilidade anual (Tesla 60% -> queda ≥ 24%): nos títulos
 #                    muito voláteis uma queda de 15% é banal (testado: menos sinais e mais certeiros)
 # RECUPERAÇÃO: o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%; e ≥ 0,4 × volatilidade), voltou a subir com força (reta dos últimos
@@ -3633,15 +3633,17 @@ def folha_pesos(wb):
     ws["D71"] = USAR_ANALISTAS_TXT
     ws["D71"].alignment = Alignment(horizontal="right", vertical="center")
     ws["D71"].font = Font(bold=True, size=9)
-    ws["E71"] = "x" if PESOS.get("usar_analistas", 0) else None
+    ws["E71"] = None if PESOS.get("usar_analistas", 1) else "x"
     ws["E71"].fill, ws["E71"].border = amarelo, borda
     ws["E71"].font = Font(bold=True, size=12)
     ws["E71"].alignment = Alignment(horizontal="center", vertical="center")
-    ws["C71"] = ("Sem x (V160, por omissão): nas ações, o sinal usa a tendência e o valor justo (lucros × PER habitual) e "
-                 "ignora o preço-alvo dos analistas, como nas simulações (há relatórios SEC / ESEF para o passado, "
-                 "analistas não). Teste de 12 datas (2023-2025, 428 casos, 1 ano depois): a ordem pelo potencial dos "
-                 "analistas não acertou melhor do que a do valor justo (correlação −0,07 vs −0,06; cada um à frente em "
-                 "metade das datas). Com x: como antes (as duas condições). A coluna do preço-alvo continua na tabela.")
+    ws["C71"] = ("Sem x (por omissão): o sinal das ações usa a tendência, o valor justo E os analistas (as duas condições). "
+                 "Com x: ignora o preço-alvo dos analistas (as condições deles contam como cumpridas; a coluna fica a "
+                 "cinzento, só indicativa), como nas simulações do passado. ATENÇÃO: sem analistas o sinal fica mais "
+                 "permissivo (ex.: recuperações que os analistas travavam passam a contar). Antes de usar, testa: põe x e "
+                 "carrega em ▶ GERAR EVOLUÇÃO (usa este interruptor), compara com a versão sem x. Teste de 12 datas "
+                 "(2023-2025): a ordem pelos analistas não acertou melhor do que a do valor justo, mas o efeito nas "
+                 "decisões não foi medido.")
     ws["C71"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C71"].font = Font(size=9)
     ws.row_dimensions[71].height = 80
