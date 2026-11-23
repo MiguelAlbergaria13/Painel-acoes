@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V164", "23/11/2026"
+VERSAO, DATA_VERSAO = "V165", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -5691,8 +5691,25 @@ def _zona_bolsa(ticker):
 
 
 def recalcular(d, preco, hora, ref):
-    """Atualiza numa linha (dict) o preço e tudo o que depende dele, com os valores que já estão na folha."""
+    """Atualiza numa linha (dict) o preço e tudo o que depende dele, com os valores que já estão na folha.
+    V165: também acerta, de forma aproximada, o que o preço de hoje mexe nas médias (50/100/200 dias: o dia de hoje
+    passa do preço anterior para o novo) e nos máximos / mínimos (um preço novo acima do máximo passa a ser o máximo)."""
     n = lambda k: d.get(k) if isinstance(d.get(k), (int, float)) else None
+    antigo = n("preco")
+    if antigo and preco and antigo > 0:
+        for k, dias in (("mm50", 50), ("mm100c", 100), ("mm200c", 200), ("mm200", 200)):
+            if n(k):
+                d[k] = n(k) + (preco - antigo) / dias
+        for i in range(len(PERIODOS)):
+            mx, mn, med = n(f"max{i}"), n(f"min{i}"), n(f"med{i}")
+            if mx and preco > mx:
+                d[f"max{i}"] = mx = preco
+            if mn and preco < mn:
+                d[f"min{i}"] = mn = preco
+            if med and mx and mn:
+                d[f"cima{i}"], d[f"baixo{i}"] = mx / med - 1, mn / med - 1
+        if n("max1a") and preco > n("max1a"):
+            d["max1a"] = preco
     d["preco"], d["preco_hora"] = preco, hora
     if n("div"):                                     # o dividendo fica; o yield acompanha o preço
         d["div_yield"] = n("div") / preco
@@ -5769,8 +5786,14 @@ def atualizar_precos(reclassificar=False):
             if p and not passada[idx]:
                 recalcular(d, *p)
                 n_ok += 1
-        if not reclassificar:
-            pontuar_etfs(linhas)
+    if not reclassificar:                         # V165: ETFs depois das ações: sinal (comparação entre ETFs) e
+        pontuar_etfs(folhas[2][1])                # nota ponderada das suas ações, com as notas novas das ações
+        if not passada[1] and not passada[2]:
+            try:
+                ponderar_etfs(folhas[1][1], folhas[2][1], _ler_json(FICH_COMP, {}))
+            except Exception as e:
+                print("   aviso: nota das ações dos ETFs:", e)
+    for idx, (criterio, linhas) in folhas.items():
         linhas.sort(key=chave_ordem(criterio))
         if linhas:
             ops.append({"op": "escrever", "folha": idx, "rng": f"A{L0 + 1}:{ultima}{L0 + len(linhas)}",
