@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V154", "23/11/2026"
+VERSAO, DATA_VERSAO = "V155", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -7867,12 +7867,15 @@ EVO_V = 2
 EVO_COR_F, EVO_COR_M, EVO_COR_T = "1E7B34", "A9D18E", "7F7F7F"
 EVO_FIXAS = (("há 5 anos", 60), ("há 3 anos", 36), ("há 1 ano", 12), ("há 6 meses", 6))   # (rótulo, meses)
 EVO_NA = 5                         # datas aleatórias
+EVO_LIM_PADRAO = ((3.95, 3.5), (3.95, 3.5), (4.5, 3.75))   # V155: (forte, média) ações / ETFs com nível de preço / sem nível
+EVO_LIM_ROT = ("Ações (com nível de preço)", "ETFs (com nível de preço)", "Sem nível de preço")
+EVO_SALTO, EVO_PARADO = 0.40, 20   # V155: cotações suspeitas: ≥ 2 dias com ±40% ou mais, ou ≥ 20 dias seguidos sem mexer
 
 
 def _evo_lin(b):
     """1.ª linha do bloco b (0-8 ações, 9-17 ETFs)."""
     n = len(EVO_FIXAS) + EVO_NA
-    return 8 + b * EVO_H + (2 if b >= n else 0)
+    return 9 + b * EVO_H + (2 if b >= n else 0)
 
 
 def _evo_col(b):
@@ -7908,11 +7911,31 @@ def folha_evolucao(wb):
     ws.row_dimensions[2].height = 92
     botao(ws, "B4", "▶ GERAR EVOLUÇÃO", "painelacoes://evolucao", "1F4E79", "16365C", 11)
     ws.merge_cells("B4:D5")
-    ws["F4"] = g.get("gerado") or "Ainda não gerado."
-    ws["F4"].font = Font(size=9, color="7030A0")
+    ws["B6"] = g.get("gerado") or "Ainda não gerado."
+    ws["B6"].font = Font(size=9, color="7030A0")
+    lim = g.get("limites") or EVO_LIM_PADRAO           # V155: limites só desta folha (para testar)
+    ws["F3"] = "Limites para testar (só nesta folha)"
+    ws["F3"].font = Font(bold=True, size=9)
+    ws["J3"], ws["K3"] = "Compra forte ≥", "Compra média ≥"
+    for c_ in ("J3", "K3"):
+        ws[c_].font, ws[c_].alignment = Font(bold=True, size=9), Alignment(horizontal="center", wrap_text=True)
+    for i, rot in enumerate(EVO_LIM_ROT):
+        ws.cell(4 + i, 6, rot).font = Font(size=9)
+        for j in range(2):
+            c = ws.cell(4 + i, 10 + j, (lim[i] if i < len(lim) else EVO_LIM_PADRAO[i])[j])
+            c.fill, c.number_format = PatternFill("solid", fgColor="FFF2CC"), "0.00"
+            c.alignment = Alignment(horizontal="center")
+    ws["L4"] = ("Por omissão os do painel (3,95 / 3,5; sem nível 4,5 / 3,75). Só conta quem tem compra nesse dia "
+                "(sinal ≥ 3, sem «esperar» nem saúde frágil).")
+    ws["L4"].font, ws["L4"].alignment = Font(size=8, italic=True, color="595959"), Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells("L4:N6")
+    ws.column_dimensions["J"].width = ws.column_dimensions["K"].width = 10
+    if g.get("excluidos"):
+        ws["B7"] = "Excluídos (cotações suspeitas): " + g["excluidos"]
+        ws["B7"].font = Font(size=8, color="C00000")
     ws.column_dimensions["A"].width = 3
     n = len(EVO_FIXAS) + EVO_NA
-    for lin, txt_ in ((7, "AÇÕES"), (_evo_lin(n) - 2, "ETFs")):
+    for lin, txt_ in ((8, "AÇÕES"), (_evo_lin(n) - 2, "ETFs")):
         c = ws.cell(lin, 2, txt_)
         c.font, c.fill = Font(bold=True, size=12, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
         for j in range(3, 15):
@@ -8021,12 +8044,50 @@ def calcular_evolucao():
     tks = list(por_t)
     moedas = {t: txt(por_t[t].get("moeda")) or "EUR" for t in tks}
     tipos = {t: "ETF" if txt(por_t[t].get("tipo")) == "ETF" else "Ação" for t in tks}
+    try:                                               # V155: limites desta folha
+        rl = ex.ops([{"op": "ler", "folha": FOLHA_EVO, "rng": "J4:K6"}])[0]
+        lim = [tuple(_num_ou(rl[i][j], EVO_LIM_PADRAO[i][j]) or EVO_LIM_PADRAO[i][j] for j in range(2)) for i in range(3)]
+    except Exception:
+        lim = [tuple(x) for x in EVO_LIM_PADRAO]
+    # V155: o histórico vem da bolsa principal quando a tabela usa outra (ex.: Equinor em Frankfurt -> Oslo EQNR.OL):
+    # as bolsas secundárias têm muitas vezes históricos errados ou parados
+    princ = {}
+    for t in tks:
+        m_ = re.search(r"principal: .* (\S+)$", txt(por_t[t].get("bolsa")))
+        if m_ and m_.group(1).upper() != t:
+            princ[t] = m_.group(1).upper()
+    yf = _yf()
+    moedas_p = {}
+    for t, pt in princ.items():
+        try:
+            moedas_p[pt] = yf.Ticker(pt).fast_info.get("currency") or ""
+        except Exception:
+            moedas_p[pt] = ""
+    princ = {t: pt for t, pt in princ.items() if moedas_p.get(pt)}
     hoje = date_.today()
     ini = hoje - timedelta(days=int(12 * 365.25))
-    print(f"Evolução: cotações de {len(tks)} títulos (12 anos, para as médias e as retas) ...")
-    eur, _ = _sim_cotacoes_eur(tks, moedas, ini, hoje)
+    print(f"Evolução: cotações de {len(tks)} títulos (12 anos, para as médias e as retas)"
+          + (f"; {len(princ)} pela bolsa principal" if princ else "") + " ...")
+    eur, _ = _sim_cotacoes_eur(tks + sorted(set(princ.values())), {**moedas, **moedas_p}, ini, hoje)
     loc = _SIM_LOCAL.get("tab")
+    for t, pt in princ.items():                        # usa a principal se tiver cotações de pelo menos 5 anos
+        if pt in loc.columns and pt in eur.columns and loc[pt].dropna().size >= 1260:
+            loc[t], eur[t] = loc[pt], eur[pt]
     cols = [t for t in tks if loc is not None and t in loc.columns and t in eur.columns]
+    corte = loc.index[-1] - pd.Timedelta(days=int(6 * 365.25))
+    excl = []
+    for t in cols:                                     # V155: cotações suspeitas ficam de fora
+        s_ = loc[t][loc.index >= corte].dropna()
+        if len(s_) < 30:
+            continue
+        r_ = s_ / s_.shift(1)
+        saltos = int(((r_ >= 1 + EVO_SALTO) | (r_ <= 1 / (1 + EVO_SALTO))).sum())
+        igual = (s_.diff() == 0).astype(int)
+        parado = int(igual.groupby((igual == 0).cumsum()).sum().max() or 0)
+        if saltos >= 2 or parado >= EVO_PARADO:
+            excl.append(t)
+            print(f"   {t}: cotações suspeitas ({saltos} saltos de ±{EVO_SALTO:.0%}, {parado} dias seguidos parada): fica de fora")
+    cols = [t for t in cols if t not in excl]
     if not cols:
         print("Evolução: não consegui as cotações.")
         sys.exit(1)
@@ -8069,8 +8130,18 @@ def calcular_evolucao():
         todos = [t for t in cols if tipos[t] == grp]
         for rot, dia in datas:
             com = [t for t in todos if (dia, t) in dec]
-            fortes = sorted([t for t in com if _his_classe(dec[(dia, t)][0]) == "forte"], key=lambda t: -nota(dia, t))
-            medias = sorted([t for t in com if _his_classe(dec[(dia, t)][0]) == "media"], key=lambda t: -nota(dia, t))
+
+            def classe(t):                             # V155: pelos limites desta folha
+                txt_, ng, nv = dec[(dia, t)]
+                tx = txt(txt_)
+                if not (tx.startswith("Compra") or tx.startswith("Manter (nota global baixa")
+                        or tx.startswith("Manter (qualidade / saúde fracas)")) or ": esperar" in tx:
+                    return None
+                k = (1 if grp == "ETF" else 0) if isinstance(nv, (int, float)) else 2
+                v = nota(dia, t)
+                return "forte" if v >= lim[k][0] else "media" if v >= lim[k][1] else None
+            fortes = sorted([t for t in com if classe(t) == "forte"], key=lambda t: -nota(dia, t))
+            medias = sorted([t for t in com if classe(t) == "media"], key=lambda t: -nota(dia, t))
             nf_tot, nm_tot = len(fortes), len(medias)
             fortes, medias = fortes[:EVO_NF], medias[:EVO_NM]
             seg = eur.loc[dia:].ffill()
@@ -8104,13 +8175,16 @@ def calcular_evolucao():
                 dados.append(lin)
             fim_v = {t: float(norm[t].iloc[-1]) for t in sel_m + sel_f}
             med = lambda ts: sum(fim_v[t] for t in ts) / len(ts) if ts else None
+            mdn = lambda ts: sorted(fim_v[t] for t in ts)[len(ts) // 2] if len(ts) % 2 else \
+                (sum(sorted(fim_v[t] for t in ts)[len(ts) // 2 - 1:len(ts) // 2 + 1]) / 2 if ts else None)
             partes = []
             mf, mm, mt = med(sel_f), med(sel_m), float(media_todos.iloc[-1])
-            partes.append(f"Compra forte: {nf_tot} título(s)" + (f", em média {_evo_pct(mf)}" if mf is not None else "")
+            partes.append(f"Compra forte: {nf_tot} título(s)" + (f", em média {_evo_pct(mf)} (mediana {_evo_pct(mdn(sel_f))})" if mf is not None else "")
                           + (f" (no gráfico os {EVO_NF} de maior nota)" if nf_tot > EVO_NF else ""))
-            partes.append(f"Compra média: {len(sel_m)} de {nm_tot}" + (f", em média {_evo_pct(mm)}" if mm is not None else ""))
+            partes.append(f"Compra média: {len(sel_m)} de {nm_tot}" + (f", em média {_evo_pct(mm)} (mediana {_evo_pct(mdn(sel_m))})" if mm is not None else ""))
             tod = "Todas as ações" if grp == "Ação" else "Todos os ETFs"
-            partes.append(f"{tod} ({len(ok)}): {_evo_pct(mt)}")
+            md_t = float(norm.iloc[-1].median())
+            partes.append(f"{tod} ({len(ok)}): {_evo_pct(mt)} (mediana {_evo_pct(md_t)})")
             lst = lambda ts: ", ".join(f"{nome(t)} {_evo_pct(fim_v[t])}" for t in sorted(ts, key=lambda t: -fim_v[t]))
             lista = (("Forte: " + lst(sel_f)) if sel_f else "Forte: nenhum") + "   ·   " + \
                     (("Média: " + lst(sel_m)) if sel_m else "Média: nenhum")
@@ -8125,8 +8199,11 @@ def calcular_evolucao():
             print(f"   {rot_g:5} {dia:%d/%m/%Y}: forte {nf_tot:3d} ({_evo_pct(mf) if mf is not None else '—':>6}) · "
                   f"média {len(sel_m):2d}/{nm_tot:3d} ({_evo_pct(mm) if mm is not None else '—':>6}) · todos {_evo_pct(mt)}")
     gerado = f"Gerado em {datetime.now():%d/%m/%Y %H:%M} · cotações até {fim:%d/%m/%Y}"
-    _gravar_json(FICH_EVO, {"v": EVO_V, "gerado": gerado, "blocos": blocos})
-    ops = [{"op": "escrever", "folha": FOLHA_EVO, "rng": "F4", "valores": [[gerado]]}]
+    exc_txt = ", ".join(f"{txt(por_t[t].get('nome')) or t} ({t})" for t in excl)
+    _gravar_json(FICH_EVO, {"v": EVO_V, "gerado": gerado, "blocos": blocos, "limites": lim, "excluidos": exc_txt})
+    ops = [{"op": "escrever", "folha": FOLHA_EVO, "rng": "B6", "valores": [[gerado]]},
+           {"op": "escrever", "folha": FOLHA_EVO, "rng": "B7",
+            "valores": [["Excluídos (cotações suspeitas): " + exc_txt if exc_txt else None]]}]
     for b, bl in enumerate(blocos):
         r0, c0 = _evo_lin(b), _evo_col(b)
         ops.append({"op": "escrever", "folha": FOLHA_EVO, "rng": f"B{r0}:B{r0 + 1}",
