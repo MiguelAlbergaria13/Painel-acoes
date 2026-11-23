@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V167", "23/11/2026"
+VERSAO, DATA_VERSAO = "V168", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1169,6 +1169,10 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
         folha_evolucao(wb)
     except Exception as e:
         print("   aviso: folha Evolução não criada:", e)
+    try:
+        folha_comp_rent(wb)
+    except Exception as e:
+        print("   aviso: folha Comp Rent Títulos não criada:", e)
     try:
         folha_comparar(wb)
     except Exception as e:
@@ -7697,6 +7701,8 @@ def main():
         Excel(FICHEIRO).ops([{"op": "fechar_quadro"}], guardar=True)
     elif "://historico" in arg:              # folha Histórico: ▶ GERAR HISTÓRICO
         calcular_historico()
+    elif "://comprent" in arg:               # folha Comp Rent Títulos: ▶ CALCULAR
+        calcular_comp_rent()
     elif "://evolucao" in arg:               # folha Evolução: ▶ GERAR EVOLUÇÃO
         calcular_evolucao()
     elif "://alvojusto" in arg:              # folha Evolução: ▶ ANALISTAS vs VALOR JUSTO
@@ -10508,6 +10514,435 @@ def comparar_alvo_justo():
         pass
 
 
+# ======================================================= Comp Rent Títulos (V168): rentabilidade anual de cada título
+FOLHA_CRT = "Comp Rent Títulos"
+FICH_CRT = os.path.join(PASTA, BASE + "_comp_rent.json")
+CRT_N = 20                         # títulos
+CRT_L1 = 12                        # 1.ª linha dos títulos (cabeçalho na 11)
+CRT_PTS = 400                      # pontos por curva (no máximo)
+CRT_CN = 39                        # coluna AM: lista de nomes (para as listas de escolha)
+CRT_C0 = 40                        # coluna AN: dados dos gráficos (escondidos)
+CRT_D0 = 4                         # 1.ª linha dos dados (a 3 tem os nomes das séries)
+CRT_PADRAO = {"anos": 5.0, "passo": 5, "tmin": 12, "pontos": 4, "meia": None}
+CRT_COLS = ("Rent. anual simples (do início)", "Rent. anual ponderada (meia-vida)", "Ponderada − referência",
+            "Volatilidade anual", "Ponderada ÷ volatilidade", "% do tempo acima da referência", "Ordem")
+CRT_LBL = 37                       # 1.ª linha dos gráficos de cada título
+CRT_H = 18                         # linhas por par de gráficos
+
+
+def _crt_col(j, k):
+    """Coluna dos dados: k = 'c' curva do título j, 'fx'/'fy' curva ajustada, 'mx'/'my' média ponderada, 'r' referência."""
+    if k == "d":
+        return CRT_C0
+    if k == "c":
+        return CRT_C0 + 1 + j
+    if k in ("fx", "fy"):
+        return CRT_C0 + 1 + CRT_N + 2 * j + (k == "fy")
+    if k in ("mx", "my"):
+        return CRT_C0 + 1 + 3 * CRT_N + 2 * j + (k == "my")
+    return CRT_C0 + 1 + 5 * CRT_N                      # referência
+
+
+def _nomes_das_folhas(wb):
+    """[(nome, ticker)] pela ordem das folhas Ações e depois ETFs (nomes das fórmulas HYPERLINK)."""
+    out, vistos = [], set()
+    for fl_ in ("Ações", "ETFs"):
+        if fl_ not in wb.sheetnames:
+            continue
+        w_ = wb[fl_]
+        for r_ in range(L0 + 1, L0 + MAX_LINHAS + 1):
+            t_, n_ = txt(w_.cell(r_, COL["ticker"]).value).upper(), w_.cell(r_, COL["nome"]).value
+            if isinstance(n_, str) and n_.startswith("="):
+                m_ = re.search(r',"((?:[^"]|"")*)"\)$', n_)
+                n_ = m_.group(1).replace('""', '"') if m_ else None
+            if t_ and isinstance(n_, str) and n_ and n_ not in vistos:
+                vistos.add(n_)
+                out.append((n_, t_))
+    return out
+
+
+def folha_comp_rent(wb):
+    """Folha Comp Rent Títulos: para até 20 títulos, a rentabilidade anual média que se teria tido comprando em cada data
+    (de há N anos até hoje menos um tempo mínimo) e mantendo até hoje; curva ajustada (3 ou 4 pontos), média com
+    meia-vida (mais peso ao recente), comparação com uma referência e com o risco; gráfico geral e um por título."""
+    from openpyxl.chart import ScatterChart, BarChart, Reference, Series
+    from openpyxl.chart.marker import Marker
+    from openpyxl.chart.shapes import GraphicalProperties
+    from openpyxl.drawing.line import LineProperties
+    from openpyxl.worksheet.datavalidation import DataValidation as DV_
+    g = _ler_json(FICH_CRT, {})
+    ws = wb.create_sheet(FOLHA_CRT)
+    amarelo = PatternFill("solid", fgColor="FFF2CC")
+    fina = Side(style="thin", color="BFBFBF")
+    borda = Border(left=fina, right=fina, top=fina, bottom=fina)
+    ws["A1"] = "Comparar a rentabilidade dos títulos: quanto se teria ganho por ano, comprando em cada data e mantendo até hoje"
+    ws["A1"].font = Font(size=14, bold=True)
+    ws["B2"] = ("Escolhe até 20 títulos (listas com os nomes das folhas Ações e ETFs) e carrega em ▶ CALCULAR. Para cada "
+                "data, de há «extensão» anos até hoje menos o «tempo mínimo», de «periodicidade» em «periodicidade» dias de "
+                "bolsa, a curva mostra a rentabilidade anual média de comprar nessa data e manter até hoje (em euros, com "
+                "dividendos). Perto de hoje a anualização multiplica o ruído (1 mês com +5% = +80%/ano), por isso o tempo "
+                "mínimo deve ser ≥ 6 meses (12 por omissão). A curva ajustada liga 3 ou 4 pontos (a média da curva em cada "
+                "terço / quarto do período). A média ponderada usa as rentabilidades mensais, cada mês com metade do peso "
+                "do mês «meia-vida» anos mais recente (vazio = extensão ÷ 3): mais peso ao passado recente. «Ponderada − "
+                "referência»: pontos por ano acima / abaixo do título de referência (mesmo cálculo). «Ponderada ÷ "
+                "volatilidade»: rentabilidade por unidade de risco. «% do tempo acima»: em quantas datas da curva comprar o "
+                "título rendeu mais do que comprar a referência. Passado não garante futuro.")
+    ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["B2"].font = Font(italic=True, size=9, color="595959")
+    ws.merge_cells("B2:K2")
+    ws.row_dimensions[2].height = 118
+    nomes = _nomes_das_folhas(wb)
+    for i, (n_, t_) in enumerate(nomes[:600], 1):
+        ws.cell(i, CRT_CN, n_)
+    ws.column_dimensions[get_column_letter(CRT_CN)].hidden = True
+    lista = f"=${get_column_letter(CRT_CN)}$1:${get_column_letter(CRT_CN)}${max(1, len(nomes))}"
+    p = {**CRT_PADRAO, **(g.get("p") or {})}
+    ref_nome = p.get("ref") or next((n_ for n_, t_ in nomes if t_ == "SXR8.DE"), None) \
+        or next((n_ for n_, t_ in nomes if "S&P 500" in n_), None)
+    entradas = (("Extensão da análise (anos)", p["anos"], "0.00"), ("Periodicidade (dias de bolsa entre pontos)", p["passo"], "0"),
+                ("Tempo mínimo até hoje (meses; ≥ 6)", p["tmin"], "0"), ("Pontos da curva ajustada (3 ou 4)", p["pontos"], "0"),
+                ("Meia-vida da média ponderada (anos; vazio = extensão ÷ 3)", p["meia"], "0.00"),
+                ("Referência (para comparar)", ref_nome, "@"))
+    for i, (rot, v_, fm) in enumerate(entradas):
+        r = 4 + i
+        ws.cell(r, 2, rot).font = Font(bold=True, size=9)
+        c = ws.cell(r, 4, v_)
+        c.fill, c.border, c.number_format = amarelo, borda, fm
+        c.font, c.alignment = Font(bold=True), Alignment(horizontal="center")
+    ws.cell(4, 2).alignment = Alignment(horizontal="left")
+    dv = DV_(type="list", formula1=lista, allow_blank=True)
+    dv.error, dv.errorTitle = "Escolhe um nome da lista.", "Títulos"
+    ws.add_data_validation(dv)
+    dv.add("D9")
+    dv.add(f"C{CRT_L1}:C{CRT_L1 + CRT_N - 1}")
+    ws.merge_cells("D9:F9")
+    botao(ws, "F4", "▶ CALCULAR", "painelacoes://comprent", "1F4E79", "16365C", 12)
+    ws.merge_cells("F4:G5")
+    ws["F7"] = g.get("gerado") or "Ainda não calculado."
+    ws["F7"].font = Font(size=9, color="7030A0")
+    cab = ["N.º", "Título (escolhe na lista)", "Ticker"] + list(CRT_COLS)
+    for j, h_ in enumerate(cab, 2):
+        c = ws.cell(CRT_L1 - 1, j, h_)
+        c.font, c.fill = Font(bold=True, color="FFFFFF", size=9), PatternFill("solid", fgColor="1F4E79")
+        c.alignment, c.border = Alignment(horizontal="center", vertical="center", wrap_text=True), borda
+    ws.row_dimensions[CRT_L1 - 1].height = 45
+    la, lt = get_column_letter(COL["nome"]), get_column_letter(COL["ticker"])
+    tit = g.get("titulos") or []
+    res = g.get("res") or []
+    for i in range(CRT_N):
+        r = CRT_L1 + i
+        ws.cell(r, 2, i + 1).alignment = Alignment(horizontal="center")
+        c = ws.cell(r, 3, tit[i] if i < len(tit) else None)
+        c.fill, c.border, c.font = amarelo, borda, Font(bold=True)
+        ws.cell(r, 4, f'=IF(TRIM(C{r})="","",IFERROR(INDEX(\'Ações\'!${lt}:${lt},MATCH(C{r},\'Ações\'!${la}:${la},0)),'
+                      f'IFERROR(INDEX(ETFs!${lt}:${lt},MATCH(C{r},ETFs!${la}:${la},0)),"não está nas tabelas")))')
+        ws.cell(r, 4).font, ws.cell(r, 4).alignment = Font(size=9, color="1F4E79"), Alignment(horizontal="center")
+        lin = res[i] if i < len(res) else [None] * len(CRT_COLS)
+        for j, fm in enumerate(("0.0%", "0.0%", "+0.0%;-0.0%;0.0%", "0.0%", "0.00", "0%", "0")):
+            c = ws.cell(r, 5 + j, lin[j] if j < len(lin) else None)
+            c.number_format, c.border, c.alignment = fm, borda, Alignment(horizontal="center")
+    from openpyxl.formatting.rule import ColorScaleRule
+    for col in ("F", "G", "I"):
+        ws.conditional_formatting.add(f"{col}{CRT_L1}:{col}{CRT_L1 + CRT_N - 1}", ColorScaleRule(
+            start_type="min", start_color="F8696B", mid_type="percentile", mid_value=50, mid_color="FFEB84",
+            end_type="max", end_color="63BE7B"))
+    for col, w in zip("ABCDEFGHIJK", (2, 5, 34, 11, 12, 12, 12, 11, 11, 11, 8)):
+        ws.column_dimensions[col].width = w
+    # dados (escondidos)
+    for c_ in range(CRT_C0, _crt_col(0, "r") + 1):
+        ws.column_dimensions[get_column_letter(c_)].hidden = True
+    dados = g.get("dados") or {}
+    ws.cell(CRT_D0 - 1, CRT_C0, "Data")
+    for j in range(CRT_N):
+        ws.cell(CRT_D0 - 1, _crt_col(j, "c"), (dados.get("nomes") or [None] * CRT_N)[j] or " ")
+        ws.cell(CRT_D0 - 1, _crt_col(j, "fy"), "Curva ajustada")
+        ws.cell(CRT_D0 - 1, _crt_col(j, "my"), "Média ponderada")
+    ws.cell(CRT_D0 - 1, _crt_col(0, "r"), dados.get("ref_nome") or "Referência")
+    for i, v_ in enumerate((dados.get("ref") or [])[:CRT_PTS]):
+        ws.cell(CRT_D0 + i, _crt_col(0, "r"), v_)
+    for i, lin in enumerate((dados.get("linhas") or [])[:CRT_PTS]):
+        for k_, v_ in enumerate(lin):
+            if k_ == 0 and isinstance(v_, str):
+                try:
+                    v_ = datetime.strptime(v_, "%Y-%m-%d")
+                except ValueError:
+                    pass
+            ws.cell(CRT_D0 + i, CRT_C0 + k_, v_)
+    for r in range(CRT_D0, CRT_D0 + CRT_PTS):
+        ws.cell(r, CRT_C0).number_format = "dd/mm/yyyy"
+    for j, blk in enumerate(dados.get("aux") or []):
+        for i, (x_, y_) in enumerate(blk.get("f") or []):
+            ws.cell(CRT_D0 + i, _crt_col(j, "fx"), datetime.strptime(x_, "%Y-%m-%d"))
+            ws.cell(CRT_D0 + i, _crt_col(j, "fy"), y_)
+        for i, (x_, y_) in enumerate(blk.get("m") or []):
+            ws.cell(CRT_D0 + i, _crt_col(j, "mx"), datetime.strptime(x_, "%Y-%m-%d"))
+            ws.cell(CRT_D0 + i, _crt_col(j, "my"), y_)
+
+    def linha(sr, cor, w, tr=None, liso=False, marca=None):
+        ln = LineProperties(solidFill=cor, w=w)
+        if tr:
+            ln.prstDash = tr
+        sr.graphicalProperties = GraphicalProperties(ln=ln)
+        sr.marker = Marker(symbol=marca or "none", size=7 if marca else None)
+        if marca:
+            sr.marker.graphicalProperties = GraphicalProperties(solidFill=cor)
+            sr.marker.graphicalProperties.line.solidFill = cor
+        sr.smooth = liso
+
+    def eixos(ch):
+        ch.visible_cells_only = False                  # os dados estão em colunas escondidas
+        ch.x_axis.number_format, ch.y_axis.number_format = "mm/yy", "0%"
+        ch.x_axis.tickLblPos = "low"
+        ch.x_axis.delete = ch.y_axis.delete = False
+        ch.x_axis.majorGridlines = None
+    xs = Reference(ws, min_col=CRT_C0, min_row=CRT_D0, max_row=CRT_D0 + CRT_PTS - 1)
+    cores = ("1F77B4", "FF7F0E", "2CA02C", "D62728", "9467BD", "8C564B", "E377C2", "7F7F7F", "BCBD22", "17BECF",
+             "393B79", "AD494A", "637939", "8C6D31", "843C39", "7B4173", "3182BD", "E6550D", "31A354", "756BB1")
+    ch = ScatterChart()                                 # gráfico geral
+    ch.title, ch.style = "Rentabilidade anual de comprar em cada data e manter até hoje (todos)", 13
+    for j in range(CRT_N):
+        sr = Series(Reference(ws, min_col=_crt_col(j, "c"), min_row=CRT_D0 - 1, max_row=CRT_D0 + CRT_PTS - 1), xs,
+                    title_from_data=True)
+        linha(sr, cores[j], 15000)
+        ch.series.append(sr)
+    sr = Series(Reference(ws, min_col=_crt_col(0, "r"), min_row=CRT_D0 - 1, max_row=CRT_D0 + CRT_PTS - 1), xs,
+                title_from_data=True)
+    linha(sr, "000000", 28000, "dash")
+    ch.series.append(sr)
+    eixos(ch)
+    ch.legend.position = "r"
+    ch.width, ch.height = 30, 14
+    ws.add_chart(ch, "M3")
+    bc = BarChart()                                    # resumo: ponderada e simples
+    bc.type, bc.style = "bar", 10
+    bc.title = "Rentabilidade anual: ponderada (recente pesa mais) e simples"
+    bc.add_data(Reference(ws, min_col=6, max_col=6, min_row=CRT_L1 - 1, max_row=CRT_L1 + CRT_N - 1), titles_from_data=True)
+    bc.add_data(Reference(ws, min_col=5, max_col=5, min_row=CRT_L1 - 1, max_row=CRT_L1 + CRT_N - 1), titles_from_data=True)
+    bc.set_categories(Reference(ws, min_col=3, min_row=CRT_L1, max_row=CRT_L1 + CRT_N - 1))
+    bc.series[0].graphicalProperties.solidFill = "1E7B34"
+    bc.series[1].graphicalProperties.solidFill = "A9D18E"
+    bc.y_axis.number_format = "0%"
+    bc.x_axis.scaling.orientation = "maxMin"
+    bc.x_axis.delete = bc.y_axis.delete = False
+    bc.y_axis.tickLblPos = bc.x_axis.tickLblPos = "low"
+    bc.width, bc.height = 30, 13
+    ws.add_chart(bc, "M33")
+    for j in range(CRT_N):                             # um gráfico por título
+        r0 = CRT_LBL + (j // 2) * CRT_H
+        c0 = "B" if j % 2 == 0 else "G"
+        lb = (g.get("rotulos") or [None] * CRT_N)[j] if j < len(g.get("rotulos") or []) else None
+        ws[f"{c0}{r0}"] = lb or f"{j + 1}. (por escolher)"
+        ws[f"{c0}{r0}"].font = Font(bold=True, size=10, color="1F4E79")
+        ch = ScatterChart()
+        ch.style = 13
+        sr = Series(Reference(ws, min_col=_crt_col(j, "c"), min_row=CRT_D0 - 1, max_row=CRT_D0 + CRT_PTS - 1), xs,
+                    title="Comprando nessa data")
+        linha(sr, "1F4E79", 15000)
+        ch.series.append(sr)
+        sr = Series(Reference(ws, min_col=_crt_col(0, "r"), min_row=CRT_D0 - 1, max_row=CRT_D0 + CRT_PTS - 1), xs,
+                    title_from_data=True)
+        linha(sr, "A6A6A6", 15000, "dash")
+        ch.series.append(sr)
+        sr = Series(Reference(ws, min_col=_crt_col(j, "fy"), min_row=CRT_D0, max_row=CRT_D0 + 3),
+                    Reference(ws, min_col=_crt_col(j, "fx"), min_row=CRT_D0, max_row=CRT_D0 + 3), title="Curva ajustada")
+        linha(sr, "ED7D31", 28000, None, True, "circle")
+        ch.series.append(sr)
+        sr = Series(Reference(ws, min_col=_crt_col(j, "my"), min_row=CRT_D0, max_row=CRT_D0 + 1),
+                    Reference(ws, min_col=_crt_col(j, "mx"), min_row=CRT_D0, max_row=CRT_D0 + 1), title="Média ponderada")
+        linha(sr, "1E7B34", 28000, "sysDash")
+        ch.series.append(sr)
+        eixos(ch)
+        ch.legend.position = "b"
+        ch.width, ch.height = 15.5, 7.8
+        ws.add_chart(ch, f"{c0}{r0 + 1}")
+
+
+def calcular_comp_rent():
+    """▶ CALCULAR (folha Comp Rent Títulos)."""
+    import numpy as np
+    import pandas as pd
+    from datetime import date as date_, timedelta
+    ex = Excel(FICHEIRO)
+    ultima = get_column_letter(len(COLS))
+    rr = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"} for idx in (1, 2)]
+                + [{"op": "ler", "folha": FOLHA_CRT, "rng": "D4:D9"},
+                   {"op": "ler", "folha": FOLHA_CRT, "rng": f"C{CRT_L1}:C{CRT_L1 + CRT_N - 1}"}])
+    por_nome, por_t = {}, {}
+    for i, tab in zip((1, 2), rr[:2]):
+        for d in linhas_por_cabecalho(tab, i):
+            t = txt(d.get("ticker")).upper()
+            if t:
+                por_t.setdefault(t, d)
+                por_nome.setdefault(txt(d.get("nome")).strip().lower(), d)
+    v = [lin[0] for lin in rr[2]]
+    p = {"anos": _num_ou(v[0], CRT_PADRAO["anos"]) or CRT_PADRAO["anos"],
+         "passo": int(max(1, _num_ou(v[1], CRT_PADRAO["passo"]) or CRT_PADRAO["passo"])),
+         "tmin": max(1.0, _num_ou(v[2], CRT_PADRAO["tmin"]) or CRT_PADRAO["tmin"]),
+         "pontos": 3 if (_num_ou(v[3], 4) or 4) <= 3 else 4,
+         "meia": _num_ou(v[4]) if _num_ou(v[4]) and _num_ou(v[4]) > 0 else None,
+         "ref": txt(v[5]).strip() or None}
+    titulos = [txt(lin[0]).strip() or None for lin in rr[3]]
+    esc = []                                           # (posição, nome, d)
+    for i, n_ in enumerate(titulos):
+        if n_:
+            d = por_nome.get(n_.lower())
+            if d is None:
+                print(f"   «{n_}» não está nas folhas Ações / ETFs: fica de fora.")
+            else:
+                esc.append((i, n_, d))
+    d_ref = por_nome.get((p["ref"] or "").lower())
+    if not esc:
+        print("Comp Rent Títulos: escolhe pelo menos um título na lista.")
+        sys.exit(1)
+    hist = {}                                          # ticker da tabela -> ticker das cotações (bolsa principal)
+    moedas = {}
+    yf = _yf()
+    for d in [x[2] for x in esc] + ([d_ref] if d_ref else []):
+        t = txt(d.get("ticker")).upper()
+        m_ = re.search(r"principal: .* (\S+)$", txt(d.get("bolsa")))
+        th = t
+        if m_ and m_.group(1).upper() != t:
+            try:
+                mo = yf.Ticker(m_.group(1).upper()).fast_info.get("currency")
+                if mo:
+                    th, moedas[m_.group(1).upper()] = m_.group(1).upper(), mo
+            except Exception:
+                pass
+        hist[t] = th
+        moedas.setdefault(t, txt(d.get("moeda")) or "EUR")
+    hoje = date_.today()
+    ini = hoje - timedelta(days=int(p["anos"] * 365.25) + 5)
+    print(f"Comp Rent Títulos: {len(esc)} títulos, {p['anos']:.2f} anos, um ponto a cada {p['passo']} dias de bolsa, "
+          f"até hoje menos {p['tmin']:.0f} meses ...")
+    eur, _ = _sim_cotacoes_eur(sorted(set(hist.values()) | set(hist)), moedas, ini, hoje)
+    P = {}
+    for t, th in hist.items():
+        s = eur[th] if th in eur.columns and eur[th].dropna().size > 20 else (eur[t] if t in eur.columns else None)
+        if s is not None and s.dropna().size > 20:
+            P[t] = s.dropna()
+    if not P:
+        print("   sem cotações.")
+        sys.exit(1)
+    fim = max(s.index[-1] for s in P.values())
+    inicio = pd.Timestamp(fim) - pd.Timedelta(days=int(p["anos"] * 365.25))
+    corte = pd.Timestamp(fim) - pd.DateOffset(months=int(round(p["tmin"])))
+    dias = pd.DatetimeIndex(sorted(set().union(*[set(s.index) for s in P.values()])))
+    dias = dias[(dias >= inicio) & (dias <= corte)]
+    passo = p["passo"]
+    while len(dias) / passo > CRT_PTS:
+        passo += 1
+    grelha = list(dias[::passo])
+    if not grelha:
+        print("   período curto demais (extensão menor do que o tempo mínimo).")
+        sys.exit(1)
+    meia = p["meia"] or max(0.5, p["anos"] / 3)
+
+    def curva(s):
+        pf = float(s.iloc[-1])
+        out = []
+        for d in grelha:
+            s0 = s[s.index <= d]
+            if not len(s0) or s.index[0] > d or s0.index[-1] < d - pd.Timedelta(days=7):
+                out.append(None)
+                continue
+            anos_ = (s.index[-1] - d).days / 365.25
+            out.append(float((pf / float(s0.iloc[-1])) ** (1 / anos_) - 1) if anos_ > 0 else None)
+        return out
+
+    def medidas(s):
+        s = s[s.index >= inicio]
+        if len(s) < 30:
+            return None, None, None
+        anos_ = (s.index[-1] - s.index[0]).days / 365.25
+        simples = float((s.iloc[-1] / s.iloc[0]) ** (1 / anos_) - 1) if anos_ > 0.2 else None
+        m = s.resample("ME").last()
+        m = pd.concat([pd.Series([s.iloc[0]], index=[s.index[0]]), m]).sort_index()
+        m = m[~m.index.duplicated(keep="last")]
+        r = np.log(m / m.shift(1)).dropna()
+        if not len(r):
+            return simples, None, None
+        idade = np.array([(s.index[-1] - d).days / 365.25 for d in r.index])
+        w = 0.5 ** (idade / meia)
+        pond = float(np.exp(12 * float((w * r.values).sum() / w.sum())) - 1)
+        vol = float(np.log(s / s.shift(1)).dropna().std() * np.sqrt(252))
+        return simples, pond, vol
+    t_ref = txt(d_ref.get("ticker")).upper() if d_ref else None
+    c_ref = curva(P[t_ref]) if t_ref in P else [None] * len(grelha)
+    m_ref = medidas(P[t_ref]) if t_ref in P else (None, None, None)
+    res = [[None] * len(CRT_COLS) for _ in range(CRT_N)]
+    curvas, aux, rot = [[None] * len(grelha) for _ in range(CRT_N)], [{} for _ in range(CRT_N)], [None] * CRT_N
+    nomes_s = [None] * CRT_N
+    for j, n_, d in esc:
+        t = txt(d.get("ticker")).upper()
+        nomes_s[j] = n_
+        if t not in P:
+            rot[j] = f"{j + 1}. {n_}: sem cotações"
+            continue
+        c = curva(P[t])
+        curvas[j] = c
+        simples, pond, vol = medidas(P[t])
+        val = [(g_, y_) for g_, y_ in zip(grelha, c) if y_ is not None]
+        if val:
+            partes = np.array_split(np.arange(len(val)), p["pontos"])
+            aux[j]["f"] = [((val[pt[0]][0] + (val[pt[-1]][0] - val[pt[0]][0]) / 2).strftime("%Y-%m-%d"),
+                            round(float(np.mean([val[k][1] for k in pt])), 5)) for pt in partes if len(pt)]
+            aux[j]["m"] = [(val[0][0].strftime("%Y-%m-%d"), round(pond, 5) if pond is not None else None),
+                           (val[-1][0].strftime("%Y-%m-%d"), round(pond, 5) if pond is not None else None)]
+        dif = pond - m_ref[1] if pond is not None and m_ref[1] is not None else None
+        ambos = [(a, b) for a, b in zip(c, c_ref) if a is not None and b is not None]
+        acima = sum(a > b for a, b in ambos) / len(ambos) if ambos else None
+        res[j] = [simples, pond, dif, vol, (pond / vol) if pond is not None and vol else None, acima, None]
+        desde = f" (só desde {val[0][0]:%m/%Y})" if val and val[0][0] > grelha[0] + pd.Timedelta(days=40) else ""
+        rot[j] = (f"{j + 1}. {n_}{desde}: simples {simples:+.1%} · ponderada {pond:+.1%}"
+                  if simples is not None and pond is not None else f"{j + 1}. {n_}{desde}").replace("+-", "−")
+    ordem = sorted([j for j in range(CRT_N) if res[j][2] is not None or res[j][1] is not None],
+                   key=lambda j: -(res[j][2] if res[j][2] is not None else res[j][1]))
+    for k, j in enumerate(ordem, 1):
+        res[j][6] = k
+    linhas = []
+    for i, d in enumerate(grelha):
+        linhas.append([d.strftime("%Y-%m-%d")] + [None if curvas[j][i] is None else round(curvas[j][i], 5)
+                                                   for j in range(CRT_N)])
+    gerado = (f"Calculado em {datetime.now():%d/%m/%Y %H:%M} · {grelha[0]:%d/%m/%Y} a {grelha[-1]:%d/%m/%Y} "
+              f"({len(grelha)} pontos, de {passo} em {passo} dias de bolsa) · meia-vida {meia:.2f} anos"
+              + (f" · referência: {p['ref']} (ponderada {m_ref[1]:+.1%})" if m_ref[1] is not None else ""))
+    dados = {"nomes": nomes_s, "ref_nome": p["ref"] or "Referência", "linhas": linhas, "aux": aux,
+             "ref": [None if x is None else round(x, 5) for x in c_ref]}
+    _gravar_json(FICH_CRT, {"p": p, "titulos": titulos, "res": res, "rotulos": rot, "gerado": gerado, "dados": dados})
+    # escrever na folha
+    from datetime import datetime as dt_
+    C = lambda c: get_column_letter(c)
+    ops = [{"op": "escrever", "folha": FOLHA_CRT, "rng": "F7", "valores": [[gerado]]},
+           {"op": "escrever", "folha": FOLHA_CRT, "rng": f"E{CRT_L1}:K{CRT_L1 + CRT_N - 1}", "valores": res}]
+    grade = [["Data"] + [nomes_s[j] or " " for j in range(CRT_N)]]
+    grade += [[dt_.strptime(l_[0], "%Y-%m-%d")] + l_[1:] for l_ in linhas]
+    grade += [[None] * (CRT_N + 1)] * (CRT_PTS + 1 - len(grade))
+    ops.append({"op": "escrever", "folha": FOLHA_CRT, "rng": f"{C(CRT_C0)}{CRT_D0 - 1}:{C(CRT_C0 + CRT_N)}{CRT_D0 + CRT_PTS - 1}",
+                "valores": grade})
+    gr = [[p["ref"] or "Referência"]] + [[x if x is None else round(x, 5)] for x in c_ref]
+    gr += [[None]] * (CRT_PTS + 1 - len(gr))
+    ops.append({"op": "escrever", "folha": FOLHA_CRT, "rng": f"{C(_crt_col(0, 'r'))}{CRT_D0 - 1}:{C(_crt_col(0, 'r'))}{CRT_D0 + CRT_PTS - 1}",
+                "valores": gr})
+    blocof = [[None] * (4 * CRT_N) for _ in range(4)]
+    for j in range(CRT_N):
+        for i, (x_, y_) in enumerate((aux[j].get("f") or [])[:4]):
+            blocof[i][2 * j], blocof[i][2 * j + 1] = dt_.strptime(x_, "%Y-%m-%d"), y_
+        for i, (x_, y_) in enumerate((aux[j].get("m") or [])[:2]):
+            blocof[i][2 * CRT_N + 2 * j], blocof[i][2 * CRT_N + 2 * j + 1] = dt_.strptime(x_, "%Y-%m-%d"), y_
+    ops.append({"op": "escrever", "folha": FOLHA_CRT, "rng": f"{C(_crt_col(0, 'fx'))}{CRT_D0}:{C(_crt_col(CRT_N - 1, 'my'))}{CRT_D0 + 3}",
+                "valores": blocof})
+    for j in range(CRT_N):
+        r0 = CRT_LBL + (j // 2) * CRT_H
+        ops.append({"op": "escrever", "folha": FOLHA_CRT, "rng": f"{'B' if j % 2 == 0 else 'G'}{r0}",
+                    "valores": [[rot[j] or f"{j + 1}. (por escolher)"]]})
+    ex.ops(ops, guardar=True)
+    for k, j in enumerate(ordem, 1):
+        r = res[j]
+        print(f"   {k:2d}. {nomes_s[j][:34]:34} simples {r[0]:+6.1%} · ponderada {r[1]:+6.1%}"
+              + (f" · vs referência {r[2]:+6.1%}" if r[2] is not None else ""))
+    print("Comp Rent Títulos: pronto.")
+
+
 _SIM_LOCAL = {}
 
 
@@ -11429,7 +11864,7 @@ def acao_do_botao(arg):
     """(chave, descrição) da ação pedida, para a janela de progresso e para a estimativa do tempo."""
     a = arg.lower()
     for chave, padrao, txt_ in (
-            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
+            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comprent", "://comprent", "Comparar rentabilidade"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
             ("ordenar", "ordenar", "Ordenar"),
             ("procurar", "procurar", "Procurar"), ("top", "://top", "Mais significativas"),
             ("base", "://base", "Lista base"), ("acrescentar", "acrescentar", "Acrescentar marcados"),
