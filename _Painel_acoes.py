@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V162", "23/11/2026"
+VERSAO, DATA_VERSAO = "V163", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -6061,9 +6061,14 @@ function calcCompra(){
   const LA=[3.95,3.5,3],LE=[4.5,3.75,2.75];
   g('cx').textContent=`Ações ${txtN(c.a,LA)} · ETFs ${txtN(c.e,LE)} · ações ${eur(c.t*c.p/100)} · ETFs ${eur(c.t*(1-c.p/100))}`;
   let h='';
-  for(const [nome,lista,mn,val] of [['Ações',D.a,c.a,c.t*c.p/100],['ETFs',D.e,c.e,c.t*(1-c.p/100)]]){
-    const esc_=[];
+  const todosT=new Map([...D.a,...D.e].map(d=>[String(d.t||'').toUpperCase(),d]));
+  for(const [nome,lista,mn,val,FXL] of [['Ações',D.a,c.a,c.t*c.p/100,(D.cmp&&D.cmp.fa)||[]],['ETFs',D.e,c.e,c.t*(1-c.p/100),(D.cmp&&D.cmp.fe)||[]]]){
+    const esc_=[],fixT=new Set();
+    for(const [tk,pc] of FXL){const d=todosT.get(String(tk).toUpperCase());   // V163: fixos (definidos na folha Compra do Excel)
+      if(!d||fixT.has(String(tk).toUpperCase())||!(pc>0))continue;fixT.add(String(tk).toUpperCase());
+      esc_.push({...d,ngc:d.ng??d.nt??0,fixo:pc});}
     for(const d of lista){
+      if(fixT.has(String(d.t||'').toUpperCase()))continue;
       let ng=d.ng??d.nt;const dc=d.dc||'';
       const L=d.np!=null?LA:LE;
       // a nota global da tabela (também nos «esperar»), como no Excel
@@ -6071,17 +6076,18 @@ function calcCompra(){
       if(c.s&&!dc.startsWith('Compra'))continue;
       if(d.x&&!c.h)continue;
       esc_.push({...d,ngc:ng});}
-    esc_.sort((a,b)=>b.ngc-a.ngc);
+    esc_.sort((a,b)=>(b.fixo!=null)-(a.fixo!=null)||b.ngc-a.ngc);
     const T=d=>String(d.t||'').toUpperCase(),acha=d=>!q||(d.n+' '+d.c+' '+d.t).toLowerCase().includes(q);
     // o que não aparece (procura, «não quero», «não disponível») fica sem valor; cada quadrado desligado esconde sempre
-    const fora=d=>nq.has(T(d))||nd.has(T(d))||!acha(d),soma=esc_.filter(d=>!fora(d)).reduce((s,d)=>s+d.ngc,0);
-    const wd=d=>fora(d)||!soma?0:d.ngc/soma;
+    const fora=d=>nq.has(T(d))||nd.has(T(d))||!acha(d),soma=esc_.filter(d=>!fora(d)&&d.fixo==null).reduce((s,d)=>s+d.ngc,0);
+    const sfx=esc_.filter(d=>!fora(d)&&d.fixo!=null).reduce((s,d)=>s+d.fixo,0),resto=Math.max(0,1-sfx);
+    const wd=d=>fora(d)?0:d.fixo!=null?d.fixo/Math.max(1,sfx):(!soma?0:resto*d.ngc/soma);
     let tv=0;
     const vis=d=>acha(d)&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d)))&&(c.vn||wd(d)*val>=0.005);   // 0 € (também com o grupo a 0 €)
     const cards=esc_.filter(vis).map(d=>{
       const f=fora(d),w=wd(d),v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
       return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corT(d)}">${num(d.ngc,2)}</div>
-      <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
+      <div class="nm"><b>${d.fixo!=null?'📌 ':''}${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}${d.fixo!=null?' <small style="font-weight:400;color:var(--mu)">(fixo)</small>':''}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
       <div class="px">${eur(v)}<span>${num(w*100,1)}% do grupo</span></div></div>
       <span class="dec" style="background:${corDecF(d)};${dc_(d)}">${esc(d.dc)}</span>
       <div class="lv3"><div>Preço atual<b>${pr(d.p)} ${esc(d.m)}</b></div><div>Preço compra (Limite)<b class="cmx">${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -6089,7 +6095,7 @@ function calcCompra(){
       <div class="cbt"><button data-k="nq" data-t="${esc(T(d))}" class="${nq.has(T(d))?'on':''}">Não quero</button><button data-k="nd" data-t="${esc(T(d))}" class="${nd.has(T(d))?'on':''}">Não disponível</button></div></div>`;});
     esc_.forEach(d=>{tv+=wd(d)*val;});
     const nesc=esc_.filter(d=>!vis(d)).length;
-    h+=`<h2 class="sec">${nome} (${esc_.filter(d=>!fora(d)).length}) · ${eur(tv)}${nesc?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· ${nesc} escondido${nesc>1?'s':''}</span>`:''}</h2>`+(esc_.length?cards.join(''):
+    h+=`<h2 class="sec">${nome} (${esc_.filter(d=>!fora(d)).length}) · ${eur(tv)}${sfx>0?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· 📌 fixos ${num(Math.min(1,sfx)*100,0)}%</span>`:''}${nesc?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· ${nesc} escondido${nesc>1?'s':''}</span>`:''}</h2>`+(esc_.length?cards.join(''):
       `<div class="card" style="color:var(--mu)">Nenhum título cumpre os critérios: os ${eur(val)} ficam por investir (baixa a nota mínima ou desliga «só com decisão de compra»).</div>`);
   }
   g('cr').innerHTML=h;
@@ -6746,6 +6752,7 @@ def pagina_html(linhas, etfs, texto):
                             "p": round(100 * cp_["pct_a"]) if isinstance(cp_.get("pct_a"), (int, float)) else None,
                             "s": 1 if cp_.get("so_compra") else 0, "h": 1 if cp_.get("detidos") else 0,
                             "nq": cp_.get("excluir") or [], "nd": cp_.get("indisp") or [],
+                            "fa": cp_.get("fixos_a") or [], "fe": cp_.get("fixos_e") or [],
                             "ts": cp_.get("ts") or int(os.path.getmtime(FICH_COMPRA) * 1000)}
             dados["cmp"] = {k: v for k, v in dados["cmp"].items() if v is not None}
     except Exception:
@@ -8268,13 +8275,15 @@ def calcular_evolucao():
 FOLHA_COMPRA = "Compra"
 FICH_COMPRA = os.path.join(PASTA, BASE + "_compra.json")
 COMPRA_PADRAO = {"min_a": 3.5, "min_e": 3.5, "total": 1000.0, "pct_a": 0.6, "so_compra": "x", "detidos": "x"}
-CMP_L0 = 13                     # primeira linha da tabela de resultados da folha Compra
+CMP_L0 = 19                     # primeira linha da tabela de resultados da folha Compra (V163: 13 -> 19, fixos em cima)
+CMP_NFIX = 3                    # V163: títulos fixos por grupo (ticker + % do grupo)
+CMP_FIX_L = 13                  # 1.ª linha dos fixos (ações: C nome, D ticker, E %; ETFs: G nome, H ticker, I %)
 CMP_MAX = 150
 CMP_CAB = ("Não quero (x)", "Não disponível (x)", "Título", "Ticker", "Tipo", "Nota global", "Decisão", "Preço atual",
            "Compra máxima (ordem limite)", "Compra máxima / atual (%)", "Peso no grupo (%)", "Valor a investir (€)",
-           "Nº de ações (aprox.)", "Tenho", "Câmbio para €", "Moeda", "Escala", "Visível")
+           "Nº de ações (aprox.)", "Tenho", "Câmbio para €", "Moeda", "Escala", "Visível", "Fixo", "Fixo: % do grupo")
 # colunas da tabela (letras)
-CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, CESC, CVIS = "ABCDEFGHIJKLMNOPQR"
+CQ, CND, CT, CTK, CTP, CNT, CDC, CPR, CMX, CMXP, CPS, CVL, CNA, CTEM, CFX, CMO, CESC, CVIS, CFIX, CFIXP = "ABCDEFGHIJKLMNOPQRST"
 
 
 def _nota_txt_formula(cel, lims=None):
@@ -8303,11 +8312,14 @@ def folha_compra(wb):
                 "As linhas escondidas com os filtros do cabeçalho também ficam com 0 € (o valor passa para as que se veem). "
                 "Decisão a lilás («Compra …: esperar»): título bom e barato cujo momento ainda não é de compra; entra "
                 "como os outros (com a nota global da tabela) e a decisão diz o que esperar (preço acima da média 200 "
-                "ou 50 dias e/ou até à compra máxima): usa a ordem limite ou põe x em «Não quero» se preferires esperar.")
+                "ou 50 dias e/ou até à compra máxima): usa a ordem limite ou põe x em «Não quero» se preferires esperar. "
+                "FIXOS (linhas 13-15): até 3 ações e 3 ETFs que entram sempre (mesmo sem cumprir os critérios), com a % "
+                "escrita do valor do seu grupo (ex.: 60% dos ETFs no S&P 500); o resto do grupo divide-se pela nota global "
+                "pelos outros. Escreve o ticker do Yahoo (como nas folhas Ações / ETFs): o nome aparece sozinho.")
     ws["C2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C2"].font = Font(italic=True, size=9, color="595959")
     ws.merge_cells("C2:N2")
-    ws.row_dimensions[2].height = 78
+    ws.row_dimensions[2].height = 100
     amarelo = PatternFill("solid", fgColor="FFF2CC")
     borda = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
     entradas = (("C4", "Ações: nota global igual ou maior a", "D4", p["min_a"], "0.00"),
@@ -8338,8 +8350,41 @@ def folha_compra(wb):
     ws["K7"] = ("Escalas da nota global: ações ≥ 3,95 forte · ≥ 3,5 média · ≥ 3 compra; ETFs sem nível de preço "
                 "(ouro, obrigações, ou sem ações conhecidas) ≥ 4,5 forte · ≥ 3,75 média · ≥ 2,75 compra")
     ws["K7"].font = Font(size=9, color="595959")
-    ws["C11"] = "Resultado"
-    ws["C11"].font = Font(bold=True, size=12)
+    # --- fixos (V163) ---
+    ws["C11"] = "Fixos: entram sempre, com esta % do valor do grupo (o resto divide-se pela nota global)"
+    ws["C11"].font = Font(bold=True, size=11, color="1F4E79")
+    la, lt = get_column_letter(COL["nome"]), get_column_letter(COL["ticker"])
+    for (cn, ct, cp_, rot, k) in (("C", "D", "E", "Ações fixas", "fixos_a"), ("G", "H", "I", "ETFs fixos", "fixos_e")):
+        for c_, h_ in ((cn, rot + " (nome automático)"), (ct, "Ticker"), (cp_, "% do grupo")):
+            c = ws[f"{c_}{CMP_FIX_L - 1}"]
+            c.value = h_
+            c.font, c.fill = Font(bold=True, color="FFFFFF", size=9), PatternFill("solid", fgColor="1F4E79")
+            c.alignment = Alignment(horizontal="center", wrap_text=True)
+        fx_ = p.get(k) or []
+        for i in range(CMP_NFIX):
+            r = CMP_FIX_L + i
+            tk_, pc_ = (fx_[i] + [None, None])[:2] if i < len(fx_) else (None, None)
+            for c_, v_, fm in ((ct, tk_, "@"), (cp_, pc_, "0%")):
+                c = ws[f"{c_}{r}"]
+                c.value, c.fill, c.border, c.number_format = v_, amarelo, borda, fm
+                c.font, c.alignment = Font(bold=True), Alignment(horizontal="center")
+            ws[f"{cn}{r}"] = (f'=IF(TRIM({ct}{r})="","",IFERROR(INDEX(\'Ações\'!${la}:${la},MATCH(TRIM({ct}{r}),\'Ações\'!${lt}:${lt},0)),'
+                              f'IFERROR(INDEX(ETFs!${la}:${la},MATCH(TRIM({ct}{r}),ETFs!${lt}:${lt},0)),'
+                              f'"não está nas folhas Ações / ETFs")))')
+            ws[f"{cn}{r}"].font = Font(color="1F4E79")
+            ws[f"{cn}{r}"].alignment = Alignment(horizontal="right")
+        rs = CMP_FIX_L + CMP_NFIX
+        sm = "+".join(f"IF(N({cp_}{r})>1,N({cp_}{r})/100,N({cp_}{r}))" for r in range(CMP_FIX_L, rs))   # 50 = 50%
+        ws[f"{cn}{rs}"] = (f'=IF(({sm})=0,"",IF(({sm})>1,'
+                           f'"Soma acima de 100%: os fixos ficam com o grupo todo (em proporção)",'
+                           f'"Soma dos fixos (o resto, "&TEXT(1-({sm}),"0%")&", vai pela nota)"))')
+        ws[f"{cn}{rs}"].font = Font(italic=True, size=9, color="7030A0")
+        ws[f"{cn}{rs}"].alignment = Alignment(horizontal="right")
+        ws[f"{cp_}{rs}"] = f"={sm}"
+        ws[f"{cp_}{rs}"].number_format, ws[f"{cp_}{rs}"].font = "0%", Font(bold=True, color="7030A0")
+        ws[f"{cp_}{rs}"].alignment = Alignment(horizontal="center")
+    ws[f"C{CMP_L0 - 2}"] = "Resultado"
+    ws[f"C{CMP_L0 - 2}"].font = Font(bold=True, size=12)
     for j, h in enumerate(CMP_CAB, 1):
         c = ws.cell(CMP_L0 - 1, j, h)
         c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
@@ -8358,6 +8403,8 @@ def folha_compra(wb):
     ws.column_dimensions[CMO].hidden = True
     ws.column_dimensions[CESC].hidden = True       # 1 = com nível de preço (limites 3,95/3,5/3), senão 4,5/3,75/2,75
     ws.column_dimensions[CVIS].hidden = True       # 1 = linha à vista; 0 = escondida pelo filtro (fica sem valor)
+    ws.column_dimensions[CFIX].hidden = True       # V163: 1 = fixo
+    ws.column_dimensions[CFIXP].hidden = True      # V163: % do grupo do fixo (0 se tirado com x / escondido)
     ws.auto_filter.ref = f"A{CMP_L0 - 1}:{CESC}{CMP_L0 + CMP_MAX - 1}"   # filtros: o que se esconde fica a 0 €
     a0, an = CMP_L0, CMP_L0 + CMP_MAX
     from openpyxl.formatting.rule import Rule as Rule_, FormulaRule as FR
@@ -8397,7 +8444,8 @@ def folha_compra(wb):
         ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(          # V148: pela decisão (forte só no momento certo)
             formula=[f'LEFT({dcl},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor), font=Font(bold=b_),
             stopIfTrue=True))
-    res = _ler_json(FICH_COMPRA, {}).get("linhas2") or []
+    gj = _ler_json(FICH_COMPRA, {})
+    res = (gj.get("linhas2") or []) if gj.get("l0") == CMP_L0 else []     # V163: resultados de antes (outra linha) não
     for i, lin in enumerate(res[:CMP_MAX]):
         for j, v in enumerate(lin, 1):
             ws.cell(CMP_L0 + i, j, v)
@@ -8428,10 +8476,29 @@ def calcular_compra():
     p["so_compra"] = "x" if txt(vals[4]).lower() == "x" else ""
     p["detidos"] = "x" if txt(vals[5]).lower() == "x" else ""
     g = _ler_json(FICH_COMPRA, {})
+    fl = CMP_FIX_L + CMP_NFIX - 1                 # V163: fixos (ticker, % do grupo)
+    try:
+        cab_fx = txt(ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": f"D{CMP_FIX_L - 1}"}])[0][0][0])
+    except Exception:
+        cab_fx = ""
+    if cab_fx == "Ticker":
+        rf = ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": f"D{CMP_FIX_L}:E{fl}"},
+                     {"op": "ler", "folha": FOLHA_COMPRA, "rng": f"H{CMP_FIX_L}:I{fl}"}])
+        for k, tab_ in zip(("fixos_a", "fixos_e"), rf):
+            lst = []
+            for lin in tab_:
+                tk_, pc_ = txt(lin[0]).strip().upper(), _num_ou(lin[1])
+                if tk_ and pc_ is not None and pc_ > 0:
+                    lst.append([tk_, round(pc_ / 100 if pc_ > 1 else pc_, 4)])
+            p[k] = lst
+    else:                                         # folha antiga (sem fixos): mantém os guardados
+        p["fixos_a"], p["fixos_e"] = g.get("fixos_a") or [], g.get("fixos_e") or []
     excluir, indisp = set(g.get("excluir") or []), set(g.get("indisp") or [])
     try:                                          # o que está marcado agora nas colunas A e B
         t_ = ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": f"A{CMP_L0}:D{CMP_L0 + CMP_MAX - 1}"}])[0]
         cab = txt(ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": f"B{CMP_L0 - 1}"}])[0][0][0])
+        if cab_fx != "Ticker":                    # V163: folha antiga (tabela noutra linha): fica com os x guardados
+            raise ValueError("folha antiga")
         if cab.startswith("Não disponível"):      # folha já com a coluna B (V120)
             vistos = {txt(l_[3]).upper() for l_ in t_ if txt(l_[3])}
             excluir = (excluir - vistos) | {txt(l_[3]).upper() for l_ in t_ if txt(l_[3]) and txt(l_[0]).lower() == "x"}
@@ -8457,10 +8524,25 @@ def calcular_compra():
     linhas, avisos, espera_l = [], [], []
     L1_, LN_ = CMP_L0, CMP_L0 + CMP_MAX - 1
     R = lambda c, fim=LN_: f"${c}${L1_}:${c}${fim}"
-    for nome_g, grupo, mn, valor in (("Ações", acoes, p["min_a"], p["total"] * p["pct_a"]),
-                                     ("ETFs", etfs, p["min_e"], p["total"] * (1 - p["pct_a"]))):
+    por_tk = {}
+    for d in acoes + etfs:
+        por_tk.setdefault(txt(d.get("ticker")).upper(), d)
+    for nome_g, grupo, mn, valor, k_fx, c_fx in (("Ações", acoes, p["min_a"], p["total"] * p["pct_a"], "fixos_a", "E"),
+                                                 ("ETFs", etfs, p["min_e"], p["total"] * (1 - p["pct_a"]), "fixos_e", "I")):
+        fixos = []                                # V163: (d, linha da % na folha)
+        for i_, (tk_, pc_) in enumerate(p.get(k_fx) or []):
+            d_ = por_tk.get(tk_)
+            if d_ is None:
+                avisos.append(f"{nome_g}: o fixo {tk_} não está nas folhas Ações / ETFs (ou está escondido pelos filtros); "
+                              "fica de fora.")
+                continue
+            if all(d_ is not f_[0] for f_ in fixos):
+                fixos.append((d_, CMP_FIX_L + i_))
+        tk_fix = {txt(f_[0].get("ticker")).upper() for f_ in fixos}
         esc = []
         for d in grupo:
+            if txt(d.get("ticker")).upper() in tk_fix:
+                continue
             ng = d.get("nota_geral") if isinstance(d.get("nota_geral"), (int, float)) else d.get("nota")
             dc_ = txt(d.get("decisao"))               # V147: a nota global da tabela, também nos «esperar»
             if not isinstance(ng, (int, float)) or round(ng, 2) < mn - 1e-9:
@@ -8474,10 +8556,30 @@ def calcular_compra():
         esc.sort(key=lambda x: -x[0])
         tipo = "Ação" if nome_g == "Ações" else "ETF"
         val_g = "$D$6*$D$7" if nome_g == "Ações" else "$D$6*(1-$D$7)"
-        if not esc:
+        if not esc and not fixos:
             avisos.append(f"{nome_g}: nenhum título cumpre os critérios; os € {valor:,.2f} ficam por investir "
                           "(baixa a nota mínima ou tira o x de «só com decisão de compra».)".replace(",", " "))
             continue
+        soma_fx = f'SUMIFS({R(CFIXP)},{R(CTP)},"{tipo}")'
+        for d, lin_pct in fixos:                  # V163: fixos primeiro (a % da folha, em proporção se passar de 100%)
+            r_ = CMP_L0 + len(linhas)
+            ng = d.get("nota_geral") if isinstance(d.get("nota_geral"), (int, float)) else d.get("nota")
+            pr = d.get("preco")
+            fx = 1.0 if txt(d.get("moeda")) == "EUR" else (d.get("fx_alt") if txt(d.get("moeda_alt")) == "EUR" else None)
+            tk = txt(d.get("ticker"))
+            fora = f'OR(LOWER(TRIM(${CQ}{r_}))="x",LOWER(TRIM(${CND}{r_}))="x")'
+            tem = e_detido(d.get("det")) or bool(d.get("qtd"))
+            linhas.append(["x" if tk.upper() in excluir else "", "x" if tk.upper() in indisp else "",
+                           f"📌 {txt(d.get('nome')) or tk} (fixo)", tk, tipo,
+                           round(ng, 2) if isinstance(ng, (int, float)) else None, txt(d.get("decisao")), pr, d.get("teto"),
+                           d.get("teto_pct"), f"=IFERROR(${CFIXP}{r_}/MAX(1,{soma_fx}),0)", f"={CPS}{r_}*{val_g}",
+                           f'=IF(AND(ISNUMBER({CPR}{r_}),ISNUMBER({CFX}{r_}),{CPR}{r_}>0,{CVL}{r_}>0),'
+                           f'{CVL}{r_}/({CPR}{r_}*{CFX}{r_}),"")',
+                           "★" if tem else "", fx if isinstance(fx, (int, float)) else None, txt(d.get("moeda")),
+                           1 if isinstance(d.get("nivel_preco"), (int, float)) else 0, f"=SUBTOTAL(103,${CT}{r_})",
+                           1, f'=IF(OR({fora},${CVIS}{r_}=0),0,IF(N(${c_fx}${lin_pct})>1,N(${c_fx}${lin_pct})/100,N(${c_fx}${lin_pct})))'])
+        if not esc:
+            avisos.append(f"{nome_g}: além dos fixos, nenhum título cumpre os critérios; o resto do grupo fica por investir.")
         for ng, d, tem in esc:
             r_ = CMP_L0 + len(linhas)
             pr = d.get("preco")
@@ -8485,14 +8587,14 @@ def calcular_compra():
             tk = txt(d.get("ticker"))
             fora = f'OR(LOWER(TRIM(${CQ}{r_}))="x",LOWER(TRIM(${CND}{r_}))="x")'
             peso = (f'=IF(OR({fora},${CVIS}{r_}=0),0,IFERROR(${CNT}{r_}/SUMIFS({R(CNT)},{R(CTP)},"{tipo}",{R(CQ)},"<>x",'
-                    f'{R(CND)},"<>x",{R(CVIS)},1),0))')                 # o que está escondido pelo filtro fica a 0
+                    f'{R(CND)},"<>x",{R(CVIS)},1,{R(CFIX)},0),0)*MAX(0,1-{soma_fx}))')   # escondido = 0; V163: menos os fixos
             linhas.append(["x" if tk.upper() in excluir else "", "x" if tk.upper() in indisp else "",
                            txt(d.get("nome")) or tk, tk, tipo, round(ng, 2), txt(d.get("decisao")), pr, d.get("teto"),
                            d.get("teto_pct"), peso, f"={CPS}{r_}*{val_g}",
                            f'=IF(AND(ISNUMBER({CPR}{r_}),ISNUMBER({CFX}{r_}),{CPR}{r_}>0,{CVL}{r_}>0),'
                            f'{CVL}{r_}/({CPR}{r_}*{CFX}{r_}),"")',
                            "★" if tem else "", fx if isinstance(fx, (int, float)) else None, txt(d.get("moeda")),
-                           1 if isinstance(d.get("nivel_preco"), (int, float)) else 0, f"=SUBTOTAL(103,${CT}{r_})"])
+                           1 if isinstance(d.get("nivel_preco"), (int, float)) else 0, f"=SUBTOTAL(103,${CT}{r_})", 0, 0])
         r_ = CMP_L0 + len(linhas)
         lin_t = [""] * len(CMP_CAB)
         lin_t[2] = f"Total {'ações' if nome_g == 'Ações' else 'ETFs'}"
@@ -8515,12 +8617,19 @@ def calcular_compra():
     for a in avisos:
         linhas.append(["", "", a] + [""] * (len(CMP_CAB) - 3))
     _gravar_json(FICH_COMPRA, {**p, "excluir": sorted(excluir), "indisp": sorted(indisp), "linhas2": linhas[:CMP_MAX],
-                               "ts": int(time.time() * 1000)})          # a app usa as escolhas mais recentes
+                               "l0": CMP_L0, "ts": int(time.time() * 1000)})          # a app usa as escolhas mais recentes
     vazio = [[None] * len(CMP_CAB) for _ in range(CMP_MAX)]
     for i, lin in enumerate(linhas[:CMP_MAX]):
         vazio[i] = ([None if v == "" else v for v in lin] + [None] * len(CMP_CAB))[:len(CMP_CAB)]
-    ex.ops([{"op": "escrever", "folha": FOLHA_COMPRA, "rng": f"A{CMP_L0}:{get_column_letter(len(CMP_CAB))}{CMP_L0 + CMP_MAX - 1}",
-             "valores": vazio}], guardar=True)
+    ops_ = [{"op": "escrever", "folha": FOLHA_COMPRA, "rng": f"A{CMP_L0}:{get_column_letter(len(CMP_CAB))}{CMP_L0 + CMP_MAX - 1}",
+             "valores": vazio}]
+    if cab_fx == "Ticker":                        # V163: fixos arrumados (ticker em maiúsculas, % como fração)
+        for k, c0_ in (("fixos_a", "D"), ("fixos_e", "H")):
+            lst = (p.get(k) or []) + [[None, None]] * CMP_NFIX
+            c1_ = get_column_letter(ord(c0_) - 63)
+            ops_.append({"op": "escrever", "folha": FOLHA_COMPRA, "rng": f"{c0_}{CMP_FIX_L}:{c1_}{CMP_FIX_L + CMP_NFIX - 1}",
+                         "valores": [list(x) for x in lst[:CMP_NFIX]]})
+    ex.ops(ops_, guardar=True)
     n = sum(1 for lin in linhas if lin[3])
     if excluir or indisp:
         print(f"   Fora: {len(excluir)} «não quero» e {len(indisp)} «não disponível» (o valor vai para os outros)")
