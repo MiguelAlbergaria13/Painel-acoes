@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V155", "23/11/2026"
+VERSAO, DATA_VERSAO = "V158", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -7617,6 +7617,8 @@ def main():
         calcular_historico()
     elif "://evolucao" in arg:               # folha Evolução: ▶ GERAR EVOLUÇÃO
         calcular_evolucao()
+    elif "://alvojusto" in arg:              # folha Evolução: ▶ ANALISTAS vs VALOR JUSTO
+        comparar_alvo_justo()
     elif "://compra" in arg:                 # folha Compra: ▶ CALCULAR COMPRA
         calcular_compra()
     elif "simular" in arg:                   # folha Simulador: ▶ SIMULAR (calcula à parte)
@@ -7898,12 +7900,12 @@ def folha_evolucao(wb):
     ws["B2"] = ("Carrega em ▶ GERAR EVOLUÇÃO. Para cada data (há 5 anos, 3 anos, 1 ano, 6 meses e 5 datas aleatórias, "
                 "novas em cada geração), o painel calcula a decisão de todos os títulos das folhas Ações e ETFs com as "
                 "regras e pesos atuais, mas só com o que se sabia nesse dia (como na folha Histórico: cotações e, nas "
-                "ações dos EUA, os relatórios da SEC; sem analistas). Cada gráfico mostra, a partir dessa data (= 100), "
+                "ações dos EUA e da Europa, os relatórios anuais da SEC e ESEF; sem analistas). Cada gráfico mostra, a partir dessa data (= 100), "
                 f"todos os «Compra forte» (verde escuro, até {EVO_NF}) e as {EVO_NM} «Compra média» de maior nota global "
                 "(verde claro), com a média de cada grupo numa linha grossa da mesma cor; «esperar» não entra. A linha cinzenta tracejada é a média de todos os títulos do grupo "
                 "(ações ou ETFs), para comparar. Cotações em euros, com dividendos, escala logarítmica. Atenção: a lista "
                 "é a de hoje (títulos que entraram por terem subido favorecem o resultado) e os fundamentos passados só "
-                "existem para as ações dos EUA. Os ETFs recebem, em cada data, a nota e o nível de preço das suas ações "
+                "existem para as ações dos EUA (SEC) e da Europa (ESEF, desde 2020). Os ETFs recebem, em cada data, a nota e o nível de preço das suas ações "
                 "(pela composição de hoje), como na tabela: com nível de preço, compra forte a partir de 3,95. Gerar demora alguns minutos (todas as cotações de 12 anos).")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
@@ -7911,6 +7913,10 @@ def folha_evolucao(wb):
     ws.row_dimensions[2].height = 92
     botao(ws, "B4", "▶ GERAR EVOLUÇÃO", "painelacoes://evolucao", "1F4E79", "16365C", 11)
     ws.merge_cells("B4:D5")
+    botao(ws, "P4", "▶ ANALISTAS vs VALOR JUSTO (há 1 ano)", "painelacoes://alvojusto", "7030A0", "4B2070", 10)
+    ws.merge_cells("P4:S5")
+    ws["P6"] = "Abre um ficheiro à parte: o que previam há um ano e o que aconteceu."
+    ws["P6"].font = Font(size=8, italic=True, color="595959")
     ws["B6"] = g.get("gerado") or "Ainda não gerado."
     ws["B6"].font = Font(size=9, color="7030A0")
     lim = g.get("limites") or EVO_LIM_PADRAO           # V155: limites só desta folha (para testar)
@@ -8111,7 +8117,7 @@ def calcular_evolucao():
         sec = sec_preparar([por_t[t] for t in cols if tipos[t] != "ETF"], dias[0], hoje)
     except Exception as e:
         print(f"   SEC: {e}")
-    print(f"   a calcular a decisão do painel de {len(cols)} títulos em {len(dias)} datas ({len(sec)} com relatórios da SEC) ...")
+    print(f"   a calcular a decisão do painel de {len(cols)} títulos em {len(dias)} datas ({len(sec)} com relatórios da SEC / ESEF) ...")
     hold = _sim_etf_hold([por_t[t] for t in cols if tipos[t] == "ETF"], [por_t[t] for t in cols if tipos[t] != "ETF"])
     dec = {}
     notas = _sim_notas_painel(loc, tipos, dias, sec, None, dec, hold)
@@ -8527,11 +8533,11 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "HISTÓRICO. Para cada dia do período, o painel calcula a decisão com as regras e pesos atuais, mas só com "
                 "o que se sabia nesse dia: as cotações (médias, rede de segurança, retas, fator de tendência) e, nas ações "
                 "dos EUA, os relatórios anuais já publicados na SEC (qualidade, saúde, PER, FCF, valor justo e nível de "
-                "preço). Fora dos EUA, sem nível de preço, a nota "
+                "preço); nas europeias, os relatórios anuais ESEF (desde 2020, sem trimestres). Fora dos EUA e da Europa, sem nível de preço, a nota "
                 "global é a nota geral e os limites são os da nota geral (4,5 / 3,75 / 2,75), por isso a compra forte é "
                 "rara. Os analistas não têm histórico: o sinal é o da tendência. O lucro por ação é o dos últimos 4 trimestres "
                 "já divulgados (10-Q e 10-K), como na tabela. O ÚLTIMO PONTO é a decisão da tabela (com analistas), para bater com ela. "
-                "Um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
+                "Período em anos em C4 (=4/52 para 4 semanas); um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
                 "manter, vermelho venda.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -8540,11 +8546,11 @@ def folha_historico(wb, linhas=(), etfs=()):
     ws.row_dimensions[2].height = 80
     amarelo = PatternFill("solid", fgColor="FFF2CC")
     borda = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
-    ws["B4"], ws["C4"] = f"Período (anos, até {HIS_ANOS_MAX}; =4/52 = 4 semanas)", g.get("anos") or 1
-    ws["B5"], ws["C5"] = "Um ponto a cada N dias de bolsa (3 a 21; 5 = semana)", g.get("passo") or 5
+    ws["B4"], ws["C4"] = f"Período em anos (até {HIS_ANOS_MAX})", g.get("anos") or 1      # V156: letra legível
+    ws["B5"], ws["C5"] = "Dias de bolsa por ponto (3 a 21)", g.get("passo") or 5
     for c_ in ("B4", "B5"):
-        ws[c_].font = Font(bold=True, size=8)
-        ws[c_].alignment = Alignment(wrap_text=False, vertical="center", shrink_to_fit=True)
+        ws[c_].font = Font(bold=True, size=9)
+        ws[c_].alignment = Alignment(wrap_text=False, vertical="center")
     ws.row_dimensions[4].height = ws.row_dimensions[5].height = 14     # linhas baixas
     for c_ in ("C4", "C5"):
         ws[c_].fill, ws[c_].border, ws[c_].font = amarelo, borda, Font(bold=True, size=9)
@@ -8566,7 +8572,7 @@ def folha_historico(wb, linhas=(), etfs=()):
         c.fill, c.border, c.font = amarelo, borda, Font(bold=True)
         for j, v in enumerate(((g.get("resumo") or {}).get(txt(c.value).upper(), []) if g.get("v") in (3, HIS_V) else [])[:8], 3):
             ws.cell(7 + i, j, v)
-    for col, w in zip("BCDEFGHIJ", (24, 30, 10, 10, 10, 10, 10, 10, 34)):
+    for col, w in zip("BCDEFGHIJ", (30, 30, 10, 10, 10, 10, 10, 10, 34)):
         ws.column_dimensions[col].width = w
 
     # dados (escondidos) e gráficos
@@ -8705,7 +8711,7 @@ def calcular_historico():
                            dias[0], hoje)
     except Exception as e:
         print(f"   SEC: {e}")
-    print(f"   a calcular a decisão do painel em {len(dias)} pontos (um a cada {passo} dias de bolsa) ({len(sec)} com relatórios da SEC) ...")
+    print(f"   a calcular a decisão do painel em {len(dias)} pontos (um a cada {passo} dias de bolsa) ({len(sec)} com relatórios da SEC / ESEF) ...")
     dec = {}
     _sim_notas_painel(loc_todos, tipos, dias, sec, None, dec)
     for t, d in zip(tks, linhas):                  # último ponto = a decisão da tabela (tem analistas e dados de hoje)
@@ -9489,6 +9495,18 @@ class SecHist:
 
 
 def sec_preparar(linhas_acoes, ini, fim):
+    """{ticker Yahoo: SecHist}: EUA pela SEC (10-K e 10-Q); V157: Europa pelos relatórios anuais ESEF."""
+    out = _sec_preparar_eua(linhas_acoes, ini, fim)
+    resto = [d for d in linhas_acoes if txt(d.get("ticker")).upper() not in out and "." in txt(d.get("ticker"))]
+    if resto:
+        try:
+            out.update(esef_preparar(resto, ini, fim))
+        except Exception as e:
+            print(f"   ESEF: {e}")
+    return out
+
+
+def _sec_preparar_eua(linhas_acoes, ini, fim):
     """{ticker Yahoo: SecHist} para as ações da lista cuja empresa está na SEC (relatórios 10-K, EUA)."""
     import pandas as pd
     from datetime import timedelta
@@ -9544,6 +9562,631 @@ def sec_preparar(linhas_acoes, ini, fim):
             continue
     print(f"   SEC: fundamentos históricos de {len(out)} empresas.")
     return out
+
+
+# ======================================================= fundamentos históricos (ESEF: relatórios anuais europeus, V157)
+# Desde 2020/2021 as empresas cotadas na UE/EEE/Reino Unido publicam o relatório anual em formato digital (ESEF).
+# O repositório público filings.xbrl.org guarda-os (grátis). Em cada data conta só o último relatório anual já
+# publicado (data de publicação; sem ela, fim do ano + 4 meses, o prazo legal). Só relatórios anuais: o lucro por ação
+# é o do último ano (não há trimestres como na SEC). Analistas continuam a não existir para o passado.
+PASTA_ESEF = os.path.join(PASTA, "_Painel_acoes_esef")
+FICH_ESEF_LEI = os.path.join(PASTA, "_Painel_acoes_esef_lei.json")    # ticker -> LEI (automático; podes corrigir)
+ESEF_URL = "https://filings.xbrl.org"
+ESEF_DIAS_PUB = 120                # sem data de publicação: fim do ano + 4 meses
+ESEF_FLUXO = {
+    "eps": ["ifrs-full:DilutedEarningsLossPerShare", "ifrs-full:BasicEarningsLossPerShare",
+            "ifrs-full:DilutedEarningsLossPerShareFromContinuingOperations",
+            "ifrs-full:BasicEarningsLossPerShareFromContinuingOperations"],
+    "ni": ["ifrs-full:ProfitLossAttributableToOwnersOfParent", "ifrs-full:ProfitLoss"],
+    "ocf": ["ifrs-full:CashFlowsFromUsedInOperatingActivities",
+            "ifrs-full:CashFlowsFromUsedInOperatingActivitiesContinuingOperations"],
+    "capex": ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+              "ifrs-full:PurchaseOfPropertyPlantAndEquipment",
+              "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets"],
+    "bruto": ["ifrs-full:GrossProfit"],
+    "receita": ["ifrs-full:Revenue", "ifrs-full:RevenueFromContractsWithCustomers"],
+    "custo": ["ifrs-full:CostOfSales"],
+    "ebit": ["ifrs-full:ProfitLossFromOperatingActivities"],
+    "juros": ["ifrs-full:InterestExpense", "ifrs-full:FinanceCosts", "ifrs-full:InterestExpenseOnBorrowings"],
+    "imp": ["ifrs-full:IncomeTaxExpenseContinuingOperations"],
+    "antes": ["ifrs-full:ProfitLossBeforeTax"],
+    "da": ["ifrs-full:DepreciationAndAmortisationExpense",
+           "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense",
+           "ifrs-full:DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+           "ifrs-full:AdjustmentsForDepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+           "ifrs-full:DepreciationExpense"],
+    "acoes": ["ifrs-full:AdjustedWeightedAverageShares", "ifrs-full:WeightedAverageShares"],
+}
+ESEF_INSTANTE = {
+    "ativo": ["ifrs-full:Assets"],
+    "cp": ["ifrs-full:EquityAttributableToOwnersOfParent", "ifrs-full:Equity"],
+    "caixa": ["ifrs-full:CashAndCashEquivalents"],
+    "div_lp": ["ifrs-full:NoncurrentPortionOfNoncurrentBorrowings", "ifrs-full:LongtermBorrowings",
+               "ifrs-full:NoncurrentBorrowings"],
+    "div_cp": ["ifrs-full:CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
+               "ifrs-full:CurrentPortionOfLongtermBorrowings", "ifrs-full:ShorttermBorrowings",
+               "ifrs-full:CurrentBorrowings"],
+    "div_tot": ["ifrs-full:Borrowings"],
+}
+_ESEF_DIM_OK = {"concept", "entity", "period", "unit", "language", "noteId"}
+
+
+def _esef_get(url, destino=None, dias=7, binario=False):
+    """GET com cópia local (válida «dias» dias; sem net usa a cópia velha). Devolve o JSON (ou bytes)."""
+    import urllib.request
+    import gzip
+    if destino and os.path.exists(destino) and time.time() - os.path.getmtime(destino) < dias * 86400:
+        with open(destino, "rb") as f:
+            dados = f.read()
+        return dados if binario else json.loads(dados.decode("utf-8"))
+    try:
+        rq = urllib.request.Request(url, headers={"User-Agent": _sec_ua(), "Accept-Encoding": "gzip",
+                                                  "Accept": "application/vnd.api+json, application/json"})
+        with urllib.request.urlopen(rq, timeout=90) as r:
+            dados = r.read()
+            if r.headers.get("Content-Encoding") == "gzip":
+                dados = gzip.decompress(dados)
+        if destino:
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            with open(destino, "wb") as f:
+                f.write(dados)
+        time.sleep(0.2)
+        return dados if binario else json.loads(dados.decode("utf-8"))
+    except Exception:
+        if destino and os.path.exists(destino):
+            with open(destino, "rb") as f:
+                dados = f.read()
+            return dados if binario else json.loads(dados.decode("utf-8"))
+        raise
+
+
+def _esef_filings(lei):
+    """{"nome", "pais", "rel": [...]} dos relatórios de uma empresa (pela API, filtrada pelo LEI; cópia de 7 dias)."""
+    import urllib.parse
+    filtro = json.dumps([{"name": "entity.identifier", "op": "eq", "val": lei}])
+    url = (f"{ESEF_URL}/api/filings?include=entity&page%5Bsize%5D=200&filter="
+           + urllib.parse.quote(filtro))
+    destino = os.path.join(PASTA_ESEF, "filings", f"{lei}.json")
+    try:
+        js = _esef_get(url, destino, dias=7)
+    except Exception:                                  # outra forma do filtro (a simples)
+        js = _esef_get(f"{ESEF_URL}/api/filings?include=entity&page%5Bsize%5D=200&filter%5Bentity.identifier%5D={lei}",
+                       destino, dias=7)
+    inc = {str(e.get("id")): (e.get("attributes") or {}) for e in (js.get("included") or [])
+           if e.get("type") == "entity"}
+    ent = {"nome": "", "pais": "", "rel": []}
+    for f in js.get("data") or []:
+        a = f.get("attributes") or {}
+        ju = a.get("json_url")
+        rid = str((((f.get("relationships") or {}).get("entity") or {}).get("data") or {}).get("id"))
+        ea = inc.get(rid, {})
+        if not ju or not a.get("period_end"):
+            continue
+        if txt(ea.get("identifier")).upper() != lei and lei not in ju:   # o filtro falhou: não é desta empresa
+            continue
+        ent["nome"] = ent["nome"] or txt(ea.get("name"))
+        ent["pais"] = ent["pais"] or txt(a.get("country"))
+        ent["rel"].append({"fim": a["period_end"][:10], "pub": txt(a.get("published"))[:10] or None,
+                           "json": ju, "erros": a.get("error_count") or 0, "added": txt(a.get("date_added"))[:10]})
+    return ent
+
+
+def _esef_lei_de_nome(nome):
+    """LEI pelo nome (só se o nome sem formas jurídicas for exatamente igual ao de uma empresa do repositório)."""
+    import urllib.parse
+    k = _nome_chave(nome)
+    if not k:
+        return None
+    pal = k.split(":", 1)[1].split()
+    if not pal:
+        return None
+    filtro = json.dumps([{"name": "name", "op": "ilike", "val": f"%{pal[0]}%"}])
+    js = _esef_get(f"{ESEF_URL}/api/entities?page%5Bsize%5D=200&filter=" + urllib.parse.quote(filtro),
+                   os.path.join(PASTA_ESEF, "nomes", re.sub(r"[^a-z0-9]", "_", pal[0]) + ".json"), dias=30)
+    cand = {txt((e.get("attributes") or {}).get("identifier")).upper() for e in (js.get("data") or [])
+            if _nome_chave((e.get("attributes") or {}).get("name")) == k}
+    cand = {c for c in cand if re.fullmatch(r"[A-Z0-9]{20}", c)}
+    return cand.pop() if len(cand) == 1 else None
+
+
+def _esef_data(s, fim_excl=True):
+    """«2023-01-01T00:00:00» (fim exclusivo do XBRL) -> date de 31/12/2022; «2022-12-31» -> essa data."""
+    from datetime import datetime as dt_, timedelta
+    s = txt(s)
+    if "T" in s:
+        d = dt_.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
+        if fim_excl and d.hour == 0 and d.minute == 0 and d.second == 0:
+            d -= timedelta(days=1)
+        return d.date()
+    return dt_.strptime(s[:10], "%Y-%m-%d").date()
+
+
+def _esef_extrair(js, fim_rel):
+    """Do xBRL-JSON de um relatório: {data de fim do ano: {eps, ni, ...}} (o ano do relatório e o anterior, que vem
+    como comparativo) e a moeda."""
+    from datetime import datetime as dt_
+    fim_rel = dt_.strptime(fim_rel[:10], "%Y-%m-%d").date()
+    alvo = {}
+    for k, cs in ESEF_FLUXO.items():
+        for pri, c in enumerate(cs):
+            alvo.setdefault(c, []).append((k, pri, True))
+    for k, cs in ESEF_INSTANTE.items():
+        for pri, c in enumerate(cs):
+            alvo.setdefault(c, []).append((k, pri, False))
+    anos, moedas = {}, {}
+    for f in (js.get("facts") or {}).values():
+        dm = f.get("dimensions") or {}
+        c = dm.get("concept")
+        if c not in alvo or set(dm) - _ESEF_DIM_OK:
+            continue
+        try:
+            v = float(f.get("value"))
+        except (TypeError, ValueError):
+            continue
+        per = txt(dm.get("period"))
+        try:
+            if "/" in per:
+                a, b = per.split("/")
+                ini, fim = _esef_data(a, False), _esef_data(b)
+                dur = (fim - ini).days
+            else:
+                ini, fim, dur = None, _esef_data(per), None
+        except Exception:
+            continue
+        if abs((fim - fim_rel).days) > 10 and abs((fim_rel - fim).days - 365) > 12:
+            continue                                   # só o ano do relatório e o anterior
+        un = txt(dm.get("unit"))
+        m_ = re.match(r"iso4217:([A-Z]{3})", un)
+        if m_:
+            moedas[m_.group(1)] = moedas.get(m_.group(1), 0) + 1
+        for k, pri, fluxo in alvo[c]:
+            if fluxo != (dur is not None):
+                continue
+            if fluxo and not 330 <= dur <= 400:
+                continue
+            chave = fim if abs((fim - fim_rel).days) <= 10 else ("ant", fim)
+            reg = anos.setdefault(chave, {})
+            if k not in reg or pri < reg[k][1]:
+                reg[k] = (v, pri)
+    moeda = max(moedas, key=moedas.get) if moedas else None
+    out = {}
+    for chave, reg in anos.items():
+        fim = chave[1] if isinstance(chave, tuple) else chave
+        r = {k: v[0] for k, v in reg.items()}
+        if "eps" not in r and "ni" not in r:
+            continue
+        if "bruto" not in r and "receita" in r and "custo" in r:
+            r["bruto"] = r["receita"] - abs(r["custo"])
+        if "div_lp" in r or "div_cp" in r:
+            r["divida"] = (r.get("div_lp") or 0.0) + (r.get("div_cp") or 0.0)
+        elif "div_tot" in r:
+            r["divida"] = r["div_tot"]
+        else:
+            r["divida"] = None
+        if r.get("juros") is not None:
+            r["juros"] = abs(r["juros"])
+        out[(fim.isoformat(), isinstance(chave, tuple))] = r
+    return out, moeda
+
+
+def _esef_anuais(lei, ent):
+    """Relatórios anuais de uma empresa no formato de _sec_anuais (+ moeda), com cópia local do que se extraiu."""
+    from datetime import datetime as dt_, timedelta
+    destino = os.path.join(PASTA_ESEF, f"{lei}.json")
+    guard = _ler_json(destino, {})
+    por_fim = {}
+    for r in ent["rel"]:                               # um relatório por ano: o com menos erros; depois o 1.º
+        a = por_fim.get(r["fim"])
+        if a is None or (r["erros"], r["added"] or "9") < (a["erros"], a["added"] or "9"):
+            por_fim[r["fim"]] = r
+    anos, moeda, mudou = {}, guard.get("moeda"), False
+    for fim, r in sorted(por_fim.items()):
+        k = f"{fim}|{r['json']}"
+        if k not in guard:
+            try:
+                js = _esef_get(ESEF_URL + r["json"])
+                ex_, m_ = _esef_extrair(js, fim)
+                guard[k] = {"anos": [[f, ant, v] for (f, ant), v in ex_.items()], "moeda": m_}
+            except Exception:                          # sem net / ficheiro com erro: tenta da próxima vez
+                continue
+            mudou = True
+        g = guard[k]
+        moeda = g.get("moeda") or moeda
+        pub = r.get("pub")
+        fim_d = dt_.strptime(fim, "%Y-%m-%d")
+        if pub:
+            try:
+                p_ = dt_.strptime(pub, "%Y-%m-%d")
+                pub = p_ if fim_d < p_ <= fim_d + timedelta(days=400) else None
+            except ValueError:
+                pub = None
+        disp = pub or (fim_d + timedelta(days=ESEF_DIAS_PUB))
+        for f, ant, v in g.get("anos", []):
+            if ant:                                    # comparativo: só serve para anos sem relatório próprio
+                if f in por_fim or f in anos:
+                    continue
+                d_ = dt_.strptime(f, "%Y-%m-%d") + timedelta(days=ESEF_DIAS_PUB)
+            else:
+                d_ = disp
+            anos[f] = {**v, "fim": f, "disponivel": d_.strftime("%Y-%m-%d")}
+    if mudou:
+        guard["moeda"] = moeda
+        os.makedirs(PASTA_ESEF, exist_ok=True)
+        _gravar_json(destino, guard)
+    out = sorted(anos.values(), key=lambda r: r["disponivel"])
+    return out, moeda
+
+
+def _esef_isin(t):
+    try:
+        i = txt(_yf().Ticker(t).isin).upper()
+        return i if re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", i) else None
+    except Exception:
+        return None
+
+
+def _esef_lei_de_isin(isin):
+    """LEI do emitente pelo ISIN (GLEIF). Sem net: levanta a exceção (para não gravar «não encontrado»)."""
+    js = _esef_get(f"https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D={isin}",
+                   os.path.join(PASTA_ESEF, "gleif", f"{isin}.json"), dias=365)
+    d = js.get("data") or []
+    return txt(d[0].get("id")).upper() if d else None
+
+
+def esef_preparar(linhas_acoes, ini, fim):
+    """{ticker Yahoo: SecHist} para as ações europeias com relatórios ESEF (as dos EUA já vêm da SEC)."""
+    import pandas as pd
+    from datetime import timedelta
+    if not linhas_acoes:
+        return {}
+    mapa = _ler_json(FICH_ESEF_LEI, {})                # ticker -> LEI ou "" (procurado e não encontrado)
+    mudou, pares, ents, falhas = False, [], {}, 0
+    for d in linhas_acoes:
+        t = txt(d.get("ticker")).upper()
+        if not t or falhas >= 3:                       # sem net / repositório em baixo: não insiste
+            continue
+        lei = mapa.get(t)
+        if lei is None:                                # 1.ª vez: ISIN -> LEI (GLEIF); senão pelo nome exato
+            isin = _esef_isin(t)
+            if isin and isin[:2] in ("US", "JP", "KR", "TW", "CN", "HK", "CA", "AU", "IN", "BR"):
+                lei = ""                               # fora da Europa: não há ESEF
+            else:
+                try:
+                    lei = (_esef_lei_de_isin(isin) if isin else None) or _esef_lei_de_nome(d.get("nome")) or ""
+                except Exception:                      # sem net: tenta outra vez da próxima
+                    falhas += 1
+                    continue
+            mapa[t] = lei
+            mudou = True
+        if lei:
+            try:
+                e = _esef_filings(lei)
+            except Exception:
+                falhas += 1
+                continue
+            if e["rel"]:
+                ents[lei] = e
+                pares.append((d, t, lei))
+    if mudou:
+        os.makedirs(PASTA_ESEF, exist_ok=True)
+        _gravar_json(FICH_ESEF_LEI, mapa)
+    if falhas >= 3:
+        print("   ESEF: o repositório filings.xbrl.org não respondeu (sem net?): sem fundamentos europeus desta vez.")
+    if not pares:
+        return {}
+    print(f"   ESEF: relatórios anuais de {len(pares)} empresas europeias (a 1.ª vez demora) ...")
+    yf = _yf()
+    hist = {}                                          # ticker das cotações: a bolsa principal, se houver
+    for d, t, _ in pares:
+        m_ = re.search(r"principal: .* (\S+)$", txt(d.get("bolsa")))
+        hist[t] = m_.group(1).upper() if m_ else t
+    pedir = sorted(set(hist.values()))
+    try:
+        h = _por_ticker(yf.download(pedir, start=(ini - timedelta(days=4 * 366)).strftime("%Y-%m-%d"),
+                                    end=(fim + timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d",
+                                    group_by="ticker", auto_adjust=False, progress=False, threads=True), pedir)
+    except Exception:
+        h = {}
+    fx_cache = {}
+
+    def fx(de, para):
+        if de == para:
+            return 1.0
+        k = f"{de}{para}=X"
+        if k not in fx_cache:
+            try:
+                s = yf.download(k, start=(ini - timedelta(days=4 * 366 + 15)).strftime("%Y-%m-%d"),
+                                end=(fim + timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d",
+                                auto_adjust=True, progress=False)["Close"]
+                if hasattr(s, "columns"):
+                    s = s.iloc[:, 0]
+                s = s.dropna()
+                if not len(s):
+                    fx_cache[k] = None
+                elif not isinstance(s.index, pd.DatetimeIndex):   # sem datas: câmbio fixo (o último)
+                    fx_cache[k] = float(s.iloc[-1])
+                else:
+                    if getattr(s.index, "tz", None) is not None:
+                        s.index = s.index.tz_localize(None)
+                    s.index = s.index.normalize()
+                    fx_cache[k] = s[~s.index.duplicated(keep="last")]
+            except Exception:
+                fx_cache[k] = None
+        return fx_cache[k]
+    out, sem = {}, []
+    for d, t, lei in pares:
+        try:
+            an, moeda_r = _esef_anuais(lei, ents[lei])
+            th = hist[t]
+            df = h.get(th) if hasattr(h, "get") else None
+            if (not an or df is None or "Close" not in df) and th != t:
+                th = t
+                df = _por_ticker(yf.download([t], start=(ini - timedelta(days=4 * 366)).strftime("%Y-%m-%d"),
+                                             end=(fim + timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d",
+                                             group_by="ticker", auto_adjust=False, progress=False), [t]).get(t)
+            if not an or df is None or "Close" not in df or not moeda_r:
+                sem.append(t)
+                continue
+            p = df["Close"].dropna()
+            if getattr(p.index, "tz", None) is not None:
+                p.index = p.index.tz_localize(None)
+            p.index = p.index.normalize()
+            p = p[~p.index.duplicated(keep="last")]
+            try:
+                mt = (yf.Ticker(th).fast_info.get("currency") if th != t else txt(d.get("moeda"))) or ""
+            except Exception:
+                mt = txt(d.get("moeda"))
+            fat = 0.01 if mt in ("GBp", "GBX", "ZAc", "ILA") else 1.0
+            mt = {"GBp": "GBP", "GBX": "GBP", "ZAc": "ZAR", "ILA": "ILS"}.get(mt, mt.upper() or "EUR")
+            f_ = fx(mt, moeda_r)
+            if f_ is None:
+                sem.append(t)
+                continue
+            p = p * fat * (f_ if isinstance(f_, float) else f_.reindex(p.index.union(f_.index)).ffill().bfill().reindex(p.index))
+            try:
+                sp = yf.Ticker(th).splits
+                if getattr(sp.index, "tz", None) is not None:
+                    sp.index = sp.index.tz_localize(None)
+            except Exception:
+                sp = None
+            out[t] = SecHist(an, sp, p.dropna(), txt(d.get("saude")).startswith("não se aplica"), None)
+        except Exception:
+            sem.append(t)
+    print(f"   ESEF: fundamentos históricos de {len(out)} empresas europeias"
+          + (f" (sem dados utilizáveis: {', '.join(sem[:12])}{'…' if len(sem) > 12 else ''})" if sem else "") + ".")
+    return out
+
+
+# ======================================================= analistas vs valor justo, comparados com o que aconteceu (V158)
+FICH_ALVO_JUSTO = os.path.join(PASTA, BASE + "_analistas_vs_justo.xlsx")
+AJ_MIN_FIRMAS = 3                  # consenso só com pelo menos 3 casas de análise
+
+
+def _aj_consenso(t, dia, yf):
+    """Preço-alvo médio dos analistas em «dia»: para cada casa de análise, o último alvo publicado nos 12 meses
+    antes (histórico de alterações do Yahoo), em ações de hoje (desdobramentos depois corrigidos). -> (alvo, n)."""
+    import pandas as pd
+    tk = yf.Ticker(t)
+    ud = getattr(tk, "upgrades_downgrades", None)
+    if ud is None or not len(ud) or "currentPriceTarget" not in ud.columns:
+        return None, 0
+    ud = ud.reset_index()
+    col_d = "GradeDate" if "GradeDate" in ud.columns else ud.columns[0]
+    ud[col_d] = pd.to_datetime(ud[col_d], errors="coerce")
+    if getattr(ud[col_d].dt, "tz", None) is not None:
+        ud[col_d] = ud[col_d].dt.tz_localize(None)
+    dia = pd.Timestamp(dia)
+    ud = ud[(ud[col_d] <= dia) & (ud[col_d] > dia - pd.Timedelta(days=365))]
+    ud = ud[pd.to_numeric(ud["currentPriceTarget"], errors="coerce") > 0]
+    if not len(ud):
+        return None, 0
+    ult = ud.sort_values(col_d).groupby("Firm").tail(1)
+    try:
+        sp = tk.splits
+        if getattr(sp.index, "tz", None) is not None:
+            sp.index = sp.index.tz_localize(None)
+        fator = float(sp[(sp.index > dia) & (sp > 0)].prod()) if len(sp) else 1.0
+    except Exception:
+        fator = 1.0
+    if len(ult) < AJ_MIN_FIRMAS:
+        return None, len(ult)
+    return float(pd.to_numeric(ult["currentPriceTarget"]).mean()) / (fator or 1.0), len(ult)
+
+
+def comparar_alvo_justo():
+    """▶ ANALISTAS vs VALOR JUSTO (folha Evolução): há um ano, quanto prometiam o preço-alvo dos analistas e o valor
+    justo (lucros × PER habitual, pelos relatórios SEC / ESEF), e quanto subiu de facto cada ação. Ficheiro à parte."""
+    import pandas as pd
+    from datetime import date as date_, timedelta
+    from openpyxl import Workbook
+    from openpyxl.chart import ScatterChart, Reference, Series
+    from openpyxl.chart.marker import Marker
+    ex = Excel(FICHEIRO)
+    carregar_pesos(ex)
+    ultima = get_column_letter(len(COLS))
+    tab = ex.ops([{"op": "ler", "folha": 1, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"}])[0]
+    acoes = [d for d in linhas_por_cabecalho(tab, 1) if txt(d.get("tipo")) != "ETF"]
+    por_t = {}
+    for d in acoes:
+        por_t.setdefault(txt(d.get("ticker")).upper(), d)
+    tks = list(por_t)
+    hoje = date_.today()
+    ini = hoje - timedelta(days=int(5 * 365.25))
+    yf = _yf()
+    print(f"Analistas vs valor justo: cotações de {len(tks)} ações ...")
+    try:
+        h = _por_ticker(yf.download(tks, start=ini.strftime("%Y-%m-%d"), end=(hoje + timedelta(days=1)).strftime("%Y-%m-%d"),
+                                    interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=True), tks)
+    except Exception as e:
+        print(f"   sem cotações: {e}")
+        sys.exit(1)
+    P = {}
+    for t in tks:
+        df = h.get(t) if hasattr(h, "get") else None
+        if df is None or "Close" not in df:
+            continue
+        s = df["Close"].dropna()
+        if getattr(s.index, "tz", None) is not None:
+            s.index = s.index.tz_localize(None)
+        s.index = s.index.normalize()
+        P[t] = _sim_limpar(s[~s.index.duplicated(keep="last")])
+    if not P:
+        print("   sem cotações.")
+        sys.exit(1)
+    fim = max(s.index[-1] for s in P.values())
+    dia = pd.Timestamp(fim) - pd.DateOffset(years=1)
+    print(f"   data de partida: {dia:%d/%m/%Y} (há 1 ano) · fim: {fim:%d/%m/%Y}")
+    sec = {}
+    try:
+        sec = sec_preparar([por_t[t] for t in P], dia.to_pydatetime().date() - timedelta(days=30), hoje)
+    except Exception as e:
+        print(f"   SEC/ESEF: {e}")
+    print(f"   valor justo de há 1 ano: {len(sec)} ações com relatórios · a ler o histórico dos analistas ...")
+    linhas = []
+    for i, t in enumerate(P):
+        s = P[t]
+        s0 = s[s.index <= dia]
+        if not len(s0) or s0.index[-1] < dia - pd.Timedelta(days=10):
+            continue
+        p0, p1 = float(s0.iloc[-1]), float(s.iloc[-1])
+        real = p1 / p0 - 1
+        try:
+            alvo, nf = _aj_consenso(t, dia, yf)
+        except Exception:
+            alvo, nf = None, 0
+        jp = None
+        if t in sec:
+            try:
+                jp = sec[t].em(dia).get("justo_pct")
+            except Exception:
+                jp = None
+        pa = alvo / p0 - 1 if alvo else None
+        if pa is None and jp is None:
+            continue
+        linhas.append({"t": t, "nome": txt(por_t[t].get("nome")) or t, "p0": p0, "p1": p1, "alvo": alvo, "nf": nf,
+                       "pa": pa, "pj": jp, "real": real})
+        if (i + 1) % 25 == 0:
+            print(f"   {i + 1}/{len(P)} ...")
+
+    def resumo(chave):
+        xs = [l for l in linhas if l[chave] is not None]
+        if len(xs) < 5:
+            return None
+        df = pd.DataFrame(xs)
+        rho = float(df[chave].rank().corr(df["real"].rank()))
+        q = df.sort_values(chave)
+        k = max(1, len(q) // 3)
+        return {"n": len(xs), "prev": float(df[chave].median()), "real": float(df["real"].median()),
+                "rho": rho, "top": float(q["real"].iloc[-k:].median()), "baixo": float(q["real"].iloc[:k].median()),
+                "erro": float((df[chave] - df["real"]).abs().median()),
+                "sentido": float(((df[chave] > 0) == (df["real"] > 0)).mean())}
+    r_a, r_j = resumo("pa"), resumo("pj")
+    ambos = [l for l in linhas if l["pa"] is not None and l["pj"] is not None]
+    r_aa = r_jj = None
+    if len(ambos) >= 5:                                # as mesmas ações nos dois (comparação justa)
+        guard = linhas
+        linhas = ambos
+        r_aa, r_jj = resumo("pa"), resumo("pj")
+        linhas = guard
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumo"
+    ws["A1"] = f"Analistas vs valor justo: o que previam em {dia:%d/%m/%Y} e o que aconteceu até {fim:%d/%m/%Y}"
+    ws["A1"].font = Font(bold=True, size=13)
+    ws["A2"] = ("Preço-alvo = média do último alvo de cada casa de análise nos 12 meses anteriores (histórico do Yahoo; "
+                f"só com ≥ {AJ_MIN_FIRMAS} casas). Valor justo = lucro por ação × PER habitual de 3 anos, com os relatórios "
+                "já publicados nessa data (SEC nos EUA, ESEF na Europa). Variação real = só o preço (sem dividendos), na "
+                "moeda da bolsa. Medianas (uma ação que dispara não engana).")
+    ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["A2"].font = Font(italic=True, size=9, color="595959")
+    ws.merge_cells("A2:H2")
+    ws.row_dimensions[2].height = 60
+    cab = ["", "Ações", "Previsto (mediana)", "Real (mediana)", "Correlação de ordem (−1 a 1)",
+           "Real: terço com maior previsão", "Real: terço com menor previsão", "Erro (mediana, em pontos %)",
+           "Acertou no sentido (sobe/desce)"]
+    for j, c_ in enumerate(cab, 1):
+        c = ws.cell(4, j, c_)
+        c.font, c.alignment = Font(bold=True, color="FFFFFF"), Alignment(wrap_text=True, horizontal="center")
+        c.fill = PatternFill("solid", fgColor="1F4E79")
+    ws.row_dimensions[4].height = 45
+    rot = [("Analistas (todas com alvo)", r_a), ("Valor justo (todas com relatórios)", r_j),
+           ("Analistas (as mesmas ações)", r_aa), ("Valor justo (as mesmas ações)", r_jj)]
+    for i, (nm, r) in enumerate(rot):
+        ws.cell(5 + i, 1, nm).font = Font(bold=True)
+        if not r:
+            ws.cell(5 + i, 2, "poucas ações")
+            continue
+        vals = [r["n"], r["prev"], r["real"], r["rho"], r["top"], r["baixo"], r["erro"], r["sentido"]]
+        for j, v in enumerate(vals, 2):
+            c = ws.cell(5 + i, j, v)
+            c.number_format = "0" if j == 2 else "0.00" if j == 5 else "0%"
+            c.alignment = Alignment(horizontal="center")
+    ws["A10"] = ("Como ler: a correlação de ordem diz se as ações com maior previsão subiram mais (1 = ordem perfeita, "
+                 "0 = nada a ver). O melhor sinal é o que tem maior correlação e maior diferença entre o terço de cima e o "
+                 "de baixo. «Previsto» acima do «Real» = otimismo. Uma só data de partida: é um retrato, não uma prova.")
+    ws["A10"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["A10"].font = Font(size=9)
+    ws.merge_cells("A10:H10")
+    ws.row_dimensions[10].height = 48
+    ws.column_dimensions["A"].width = 34
+    for col in "BCDEFGHI":
+        ws.column_dimensions[col].width = 15
+    wd = wb.create_sheet("Ações")
+    cab2 = ["Ticker", "Empresa", f"Preço {dia:%d/%m/%Y}", f"Preço {fim:%d/%m/%Y}", "Variação real",
+            "Preço-alvo de então", "Casas de análise", "Previsão analistas", "Previsão valor justo",
+            "Erro analistas", "Erro valor justo"]
+    for j, c_ in enumerate(cab2, 1):
+        c = wd.cell(1, j, c_)
+        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
+        c.alignment = Alignment(wrap_text=True, horizontal="center")
+    linhas.sort(key=lambda l: -l["real"])
+    for i, l in enumerate(linhas, 2):
+        vals = [l["t"], l["nome"], l["p0"], l["p1"], l["real"], l["alvo"], l["nf"] or None, l["pa"], l["pj"],
+                (l["pa"] - l["real"]) if l["pa"] is not None else None,
+                (l["pj"] - l["real"]) if l["pj"] is not None else None]
+        for j, v in enumerate(vals, 1):
+            c = wd.cell(i, j, v)
+            if j in (3, 4, 6):
+                c.number_format = "0.00"
+            elif j >= 5 and j != 7:
+                c.number_format = "0%"
+    wd.freeze_panes = "C2"
+    wd.auto_filter.ref = f"A1:K{len(linhas) + 1}"
+    for col, w in zip("ABCDEFGHIJK", (11, 28, 11, 11, 11, 11, 9, 11, 11, 11, 11)):
+        wd.column_dimensions[col].width = w
+    n = len(linhas) + 1
+    for k_, (col, titulo, cor) in enumerate((("H", "Analistas: previsto (x) vs real (y)", "1F4E79"),
+                                             ("I", "Valor justo: previsto (x) vs real (y)", "1E7B34"))):
+        ch = ScatterChart()
+        ch.title, ch.style = titulo, 13
+        ch.x_axis.title, ch.y_axis.title = "previsto", "real"
+        ch.x_axis.number_format = ch.y_axis.number_format = "0%"
+        ch.x_axis.tickLblPos = ch.y_axis.tickLblPos = "low"
+        ch.x_axis.delete = ch.y_axis.delete = False
+        sr = Series(Reference(wd, min_col=5, min_row=2, max_row=n),
+                    Reference(wd, min_col=ord(col) - 64, min_row=2, max_row=n), title=titulo)
+        sr.marker = Marker(symbol="circle", size=5)
+        sr.marker.graphicalProperties.solidFill = cor
+        sr.marker.graphicalProperties.line.solidFill = cor
+        sr.graphicalProperties.line.noFill = True
+        ch.series.append(sr)
+        ch.legend = None
+        ch.width, ch.height = 14, 9
+        ws.add_chart(ch, f"{'A' if k_ == 0 else 'E'}12")
+    try:
+        wb.save(FICH_ALVO_JUSTO)
+    except PermissionError:
+        print(f"   fecha o ficheiro {os.path.basename(FICH_ALVO_JUSTO)} e volta a carregar no botão.")
+        sys.exit(1)
+    for nm, r in rot:
+        if r:
+            print(f"   {nm:36} n={r['n']:3d} · previsto {r['prev']:+.0%} · real {r['real']:+.0%} · "
+                  f"correlação {r['rho']:+.2f} · terço de cima {r['top']:+.0%} / de baixo {r['baixo']:+.0%}")
+    print(f"Pronto: {FICH_ALVO_JUSTO}")
+    try:
+        os.startfile(FICH_ALVO_JUSTO)
+    except Exception:
+        pass
 
 
 _SIM_LOCAL = {}
@@ -10467,7 +11110,7 @@ def acao_do_botao(arg):
     """(chave, descrição) da ação pedida, para a janela de progresso e para a estimativa do tempo."""
     a = arg.lower()
     for chave, padrao, txt_ in (
-            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comparar", "comparar", "Comparar notas"),
+            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
             ("ordenar", "ordenar", "Ordenar"),
             ("procurar", "procurar", "Procurar"), ("top", "://top", "Mais significativas"),
             ("base", "://base", "Lista base"), ("acrescentar", "acrescentar", "Acrescentar marcados"),
