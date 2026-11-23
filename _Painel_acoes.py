@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V159", "23/11/2026"
+VERSAO, DATA_VERSAO = "V161", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1627,6 +1627,18 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         formula=[f'AND(${cs}{L0+1}=1,{par})'], fill=PatternFill("solid", bgColor="F4B6B6"), stopIfTrue=True))
     ws.conditional_formatting.add(tudo, FormulaRule(                   # vermelho claro / rosa claro em vez dos cinzentos
         formula=[f'${cs}{L0+1}=1'], fill=PatternFill("solid", bgColor="FCE4EC"), stopIfTrue=True))
+    if not PESOS.get("usar_analistas", 0):            # V161: analistas fora do sinal: colunas a cinzento, só indicativas
+        for k_ in ("alvo", "alvo_alt", "pot", "rec"):
+            if k_ in COL:
+                cl_ = let(COL[k_])
+                ws.conditional_formatting.add(f"{cl_}{L0+1}:{cl_}{n}", FormulaRule(
+                    formula=["TRUE"], fill=PatternFill("solid", bgColor="BFBFBF"),
+                    font=Font(color="595959", italic=True), stopIfTrue=True))
+                ws.cell(L0, COL[k_]).fill = PatternFill("solid", fgColor="808080")
+        k0 = min((COL[k_] for k_ in ("alvo", "alvo_alt", "pot", "rec") if k_ in COL), default=None)
+        if k0:
+            c_ = ws.cell(L0 - 1, k0, "(Só indicativa: não conta para o sinal)")
+            c_.font, c_.alignment = Font(bold=True, italic=True, size=8, color="595959"), Alignment(horizontal="left")
     ws.conditional_formatting.add(tudo, FormulaRule(formula=[par], fill=PatternFill("solid", bgColor="D9D9D9")))
     # colunas sem uso nesta folha: na Ações, as dos ETFs; na ETFs, as que nenhum ETF preenche
     for j, (k, *_) in enumerate(COLS, start=1):
@@ -2008,6 +2020,8 @@ def pontuar(d, preco):
         return
     g, p200 = m100 / m200 - 1, preco / m200 - 1
     J, A = n("justo_pct"), n("pot")
+    if not PESOS.get("usar_analistas", 0) and txt(d.get("tipo")) != "ETF":
+        A = 1e9                                    # V160: sem analistas no sinal: as condições deles contam como cumpridas
     rede = n("venda_min")          # rede de segurança: queda demasiado grande face ao máximo de 6 meses, em qualquer tendência
     so_tend = A is None
     mom6 = preco / n("ref6m") - 1 if n("ref6m") else None
@@ -2696,7 +2710,7 @@ PESOS_PROPOSTOS = {"pont": 0.30, "qual": 0.30, "saude": 0.20, "tend": 0.20,
                    "ft_mult": 2.0, "ft_r2": 1, "ft_lim": 0.60, "ft_vol": 1, "ft_vol0": 0.25, "ft_volpen": 0.03,
                    "ft_sub": 0.05, "ft_sub_etf": 0.02, "ft_vol0_etf": 0.35,
                    "ft_bonus": 1, "ft_bmax": 0.09, "ft_bvol": 0.20, "g_nota": 2.0, "g_preco": 1.0,
-                   "rec_jan": 45, "rec_jan_etf": 60}
+                   "rec_jan": 45, "rec_jan_etf": 60, "usar_analistas": 0}
 CALIB = {}                 # calibração da nota global com os analistas (último cálculo)
 FICH_CALIB = os.path.join(PASTA, BASE + "_calibracao_nota_geral.json")
 # Fator de tendência (folha Ponderações): média ponderada das inclinações das retas (desde sempre, 10 e 5 anos com
@@ -2801,7 +2815,8 @@ def carregar_pesos(ex=None):
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "B38:E58"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "H2"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "B62:E63"},
-                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B67:E68"}])
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B67:E68"},
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "D71:E71"}])
             antiga = not txt(r[3][0][0]).startswith("ETFs: tendência")   # folha da V039: sem os quadros novos
             if antiga:
                 r[1][2][0], r[2][0][0], r[2][1][0] = 0, 0, 0
@@ -2841,6 +2856,10 @@ def carregar_pesos(ex=None):
                         lidos[k_] = max(0.0, float(str(lin[3]).replace(",", ".")))
                     except (TypeError, ValueError):
                         pass
+            if len(r) > 15 and txt(r[15][0][0]) == USAR_ANALISTAS_TXT:   # V160: analistas no sinal (x = sim)
+                lidos["usar_analistas"] = 1 if txt(r[15][0][1]).lower() == "x" else 0
+            else:
+                lidos["usar_analistas"] = PESOS_PROPOSTOS["usar_analistas"]
             for lin in (r[14] if len(r) > 14 else []):                 # janelas da compra forte (V148)
                 k_ = {REC_JAN_TXT: "rec_jan", REC_JAN_ETF_TXT: "rec_jan_etf"}.get(txt(lin[0]))
                 if k_:
@@ -3043,6 +3062,7 @@ SUB60_D, SUB60_MIN, SUB60_R2 = 60, 0.40, 0.6   # tendência forte também com a 
 REC_QUEDA, REC_QUEDA_ETF, REC_I60 = -0.15, -0.20, 0.30   # recuperação (V148)
 REC_JANELA, REC_JANELA_ETF, REC_PROTEGE, REC_MEMO = 45, 60, 63, 130
 REC_JAN_TXT, REC_JAN_ETF_TXT = "Janela da compra forte (ações)", "Janela da compra forte (ETFs)"
+USAR_ANALISTAS_TXT = "Usar os analistas no sinal (x):"   # V160
 REC_VOL = 0.4      # a queda exigida é pelo menos 0,4 × a volatilidade anual (Tesla 60% -> queda ≥ 24%): nos títulos
 #                    muito voláteis uma queda de 15% é banal (testado: menos sinais e mais certeiros)
 # RECUPERAÇÃO: o título caiu do máximo de 1 ano (ações ≥ 15%, ETFs ≥ 20%; e ≥ 0,4 × volatilidade), voltou a subir com força (reta dos últimos
@@ -3608,6 +3628,23 @@ def folha_pesos(wb):
         e_.fill, e_.border, e_.font = amarelo, borda, Font(bold=True, size=12)
         ws.cell(i, 4).number_format = e_.number_format = "0"
         ws.cell(i, 4).alignment = e_.alignment = Alignment(horizontal="center", vertical="center")
+    # --- analistas no sinal (V160) ---
+    ws.cell(70, 2, "Analistas no sinal").font = Font(bold=True, size=12)
+    ws["D71"] = USAR_ANALISTAS_TXT
+    ws["D71"].alignment = Alignment(horizontal="right", vertical="center")
+    ws["D71"].font = Font(bold=True, size=9)
+    ws["E71"] = "x" if PESOS.get("usar_analistas", 0) else None
+    ws["E71"].fill, ws["E71"].border = amarelo, borda
+    ws["E71"].font = Font(bold=True, size=12)
+    ws["E71"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["C71"] = ("Sem x (V160, por omissão): nas ações, o sinal usa a tendência e o valor justo (lucros × PER habitual) e "
+                 "ignora o preço-alvo dos analistas, como nas simulações (há relatórios SEC / ESEF para o passado, "
+                 "analistas não). Teste de 12 datas (2023-2025, 428 casos, 1 ano depois): a ordem pelo potencial dos "
+                 "analistas não acertou melhor do que a do valor justo (correlação −0,07 vs −0,06; cada um à frente em "
+                 "metade das datas). Com x: como antes (as duas condições). A coluna do preço-alvo continua na tabela.")
+    ws["C71"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["C71"].font = Font(size=9)
+    ws.row_dimensions[71].height = 80
     ws["C21"].font = Font(italic=True, size=8, color="595959")
     ws["C21"].alignment = Alignment(wrap_text=True, vertical="center")
     ws.row_dimensions[21].height = 30
