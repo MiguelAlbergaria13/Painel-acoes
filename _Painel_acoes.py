@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V153", "23/11/2026"
+VERSAO, DATA_VERSAO = "V154", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -7860,8 +7860,10 @@ EVO_PTS = 262                      # pontos por gráfico (5 anos: um a cada ~5 d
 EVO_H = 25                         # linhas por bloco (título, resumo, gráfico, lista)
 EVO_COL0 = 30                      # coluna AD: dados dos gráficos (escondidos)
 EVO_L0 = 8                         # 1.ª linha dos dados (a de cima tem os nomes das séries)
-EVO_NC = 2 + EVO_NM + EVO_NF       # colunas por gráfico: data, média de todas, compra média, compra forte
-EVO_V = 1
+EVO_NC = 4 + EVO_NM + EVO_NF       # colunas: data, média de todos, compra média (+ a sua média), compra forte (+ a sua média)
+EVO_JM = 2 + EVO_NM                # coluna (relativa) da média das «Compra média»
+EVO_JF = EVO_NC - 1                # coluna (relativa) da média das «Compra forte»
+EVO_V = 2
 EVO_COR_F, EVO_COR_M, EVO_COR_T = "1E7B34", "A9D18E", "7F7F7F"
 EVO_FIXAS = (("há 5 anos", 60), ("há 3 anos", 36), ("há 1 ano", 12), ("há 6 meses", 6))   # (rótulo, meses)
 EVO_NA = 5                         # datas aleatórias
@@ -7895,7 +7897,7 @@ def folha_evolucao(wb):
                 "regras e pesos atuais, mas só com o que se sabia nesse dia (como na folha Histórico: cotações e, nas "
                 "ações dos EUA, os relatórios da SEC; sem analistas). Cada gráfico mostra, a partir dessa data (= 100), "
                 f"todos os «Compra forte» (verde escuro, até {EVO_NF}) e as {EVO_NM} «Compra média» de maior nota global "
-                "(verde claro); «esperar» não entra. A linha cinzenta tracejada é a média de todos os títulos do grupo "
+                "(verde claro), com a média de cada grupo numa linha grossa da mesma cor; «esperar» não entra. A linha cinzenta tracejada é a média de todos os títulos do grupo "
                 "(ações ou ETFs), para comparar. Cotações em euros, com dividendos, escala logarítmica. Atenção: a lista "
                 "é a de hoje (títulos que entraram por terem subido favorecem o resultado) e os fundamentos passados só "
                 "existem para as ações dos EUA. Os ETFs recebem, em cada data, a nota e o nível de preço das suas ações "
@@ -7931,7 +7933,8 @@ def folha_evolucao(wb):
         ws.merge_cells(start_row=r0 + 22, start_column=2, end_row=r0 + 23, end_column=14)
         ws.row_dimensions[r0 + 22].height = ws.row_dimensions[r0 + 23].height = 30
         nomes = bl.get("nomes") or (["Data", "Média de todos"] + [f"Compra média {i + 1}" for i in range(EVO_NM)]
-                                    + [f"Compra forte {i + 1}" for i in range(EVO_NF)])
+                                    + ["Média das compras médias"] + [f"Compra forte {i + 1}" for i in range(EVO_NF)]
+                                    + ["Média das compras fortes"])
         for j, nm in enumerate(nomes[:EVO_NC]):
             ws.cell(EVO_L0 - 1, c0 + j, nm)
         for i, lin in enumerate((bl.get("dados") or [])[:EVO_PTS]):
@@ -7952,7 +7955,11 @@ def folha_evolucao(wb):
                         title_from_data=True)
             if j == 1:
                 cor, w, tr = EVO_COR_T, 28000, "dash"
-            elif j < 2 + EVO_NM:
+            elif j == EVO_JM:                           # V154: média das verdes claras (grossa)
+                cor, w, tr = EVO_COR_M, 57000, None
+            elif j == EVO_JF:                           # V154: média das verdes escuras (grossa)
+                cor, w, tr = EVO_COR_F, 57000, None
+            elif j < EVO_JM:
                 cor, w, tr = EVO_COR_M, 15000, None
             else:
                 cor, w, tr = EVO_COR_F, 17000, None
@@ -7970,6 +7977,7 @@ def folha_evolucao(wb):
         ch.x_axis.tickLblPos = "low"
         ch.y_axis.number_format = "0"
         ch.y_axis.scaling.logBase = 10
+        ch.y_axis.scaling.min = 10                      # V154: o eixo começa em 10
         ch.y_axis.title = "base 100"
         try:
             ch.x_axis.delete = False
@@ -8055,6 +8063,7 @@ def calcular_evolucao():
         return float(v) if isinstance(v, (int, float)) and pd.notna(v) else 0.0
 
     nome = lambda t: txt(por_t[t].get("codigo")) or t
+    empresa = lambda t: txt(por_t[t].get("nome")) or nome(t)      # V154: as séries com o nome da empresa
     blocos = []
     for grp, rot_g in (("Ação", "Ações"), ("ETF", "ETFs")):
         todos = [t for t in cols if tipos[t] == grp]
@@ -8070,17 +8079,28 @@ def calcular_evolucao():
             norm = seg[ok] / base[ok] * 100
             media_todos = norm.mean(axis=1)
             npts = len(seg)
-            passo = max(1, -(-(npts - 1) // (EVO_PTS - 1)))
-            pos = list(range(0, npts, passo))
-            if pos[-1] != npts - 1:
-                pos.append(npts - 1)
             sel_m = [t for t in medias if t in ok]
             sel_f = [t for t in fortes if t in ok]
+            # V154: sempre EVO_PTS pontos, do 1.º ao último dia (interpolados nos períodos curtos), para as linhas
+            # ocuparem todo o comprimento do gráfico
+            import numpy as np
+            xs_ = np.linspace(0, npts - 1, EVO_PTS)
+            interp = lambda serie: np.interp(xs_, np.arange(npts), serie.to_numpy(dtype=float))
+            col_t = interp(media_todos)
+            col_m = {t: interp(norm[t]) for t in sel_m}
+            col_f = {t: interp(norm[t]) for t in sel_f}
             dados = []
-            for p_ in pos[:EVO_PTS]:
-                lin = [seg.index[p_].strftime("%Y-%m-%d"), round(float(media_todos.iloc[p_]), 2)]
-                lin += [round(float(norm[t].iloc[p_]), 2) for t in sel_m] + [None] * (EVO_NM - len(sel_m))
-                lin += [round(float(norm[t].iloc[p_]), 2) for t in sel_f] + [None] * (EVO_NF - len(sel_f))
+            for i_, x_ in enumerate(xs_):
+                k0 = int(np.floor(x_))
+                k1 = min(k0 + 1, npts - 1)
+                dt_ = seg.index[k0] + (seg.index[k1] - seg.index[k0]) * (x_ - k0)
+                lin = [dt_.strftime("%Y-%m-%d"), round(float(col_t[i_]), 2)]
+                vm = [float(col_m[t][i_]) for t in sel_m]
+                vf = [float(col_f[t][i_]) for t in sel_f]
+                lin += [round(v, 2) for v in vm] + [None] * (EVO_NM - len(sel_m))
+                lin += [round(sum(vm) / len(vm), 2) if vm else None]
+                lin += [round(v, 2) for v in vf] + [None] * (EVO_NF - len(sel_f))
+                lin += [round(sum(vf) / len(vf), 2) if vf else None]
                 dados.append(lin)
             fim_v = {t: float(norm[t].iloc[-1]) for t in sel_m + sel_f}
             med = lambda ts: sum(fim_v[t] for t in ts) / len(ts) if ts else None
@@ -8089,15 +8109,18 @@ def calcular_evolucao():
             partes.append(f"Compra forte: {nf_tot} título(s)" + (f", em média {_evo_pct(mf)}" if mf is not None else "")
                           + (f" (no gráfico os {EVO_NF} de maior nota)" if nf_tot > EVO_NF else ""))
             partes.append(f"Compra média: {len(sel_m)} de {nm_tot}" + (f", em média {_evo_pct(mm)}" if mm is not None else ""))
-            partes.append(f"Todos os {rot_g.lower()} ({len(ok)}): {_evo_pct(mt)}")
+            tod = "Todas as ações" if grp == "Ação" else "Todos os ETFs"
+            partes.append(f"{tod} ({len(ok)}): {_evo_pct(mt)}")
             lst = lambda ts: ", ".join(f"{nome(t)} {_evo_pct(fim_v[t])}" for t in sorted(ts, key=lambda t: -fim_v[t]))
             lista = (("Forte: " + lst(sel_f)) if sel_f else "Forte: nenhum") + "   ·   " + \
                     (("Média: " + lst(sel_m)) if sel_m else "Média: nenhum")
             blocos.append({"titulo": f"{rot_g} · {rot} ({dia:%d/%m/%Y}) → {fim:%d/%m/%Y}",
                            "resumo": " · ".join(partes) + " (até hoje)", "lista": lista,
-                           "nomes": ["Data", f"Média de todos os {rot_g.lower()}"]
-                                    + [nome(t) for t in sel_m] + [f"—m{i}" for i in range(EVO_NM - len(sel_m))]
-                                    + [nome(t) for t in sel_f] + [f"—f{i}" for i in range(EVO_NF - len(sel_f))],
+                           "nomes": ["Data", "Média de " + ("todas as ações" if grp == "Ação" else "todos os ETFs")]
+                                    + [empresa(t) for t in sel_m] + [f"—m{i}" for i in range(EVO_NM - len(sel_m))]
+                                    + ["Média das compras médias"]
+                                    + [empresa(t) for t in sel_f] + [f"—f{i}" for i in range(EVO_NF - len(sel_f))]
+                                    + ["Média das compras fortes"],
                            "dados": dados})
             print(f"   {rot_g:5} {dia:%d/%m/%Y}: forte {nf_tot:3d} ({_evo_pct(mf) if mf is not None else '—':>6}) · "
                   f"média {len(sel_m):2d}/{nm_tot:3d} ({_evo_pct(mm) if mm is not None else '—':>6}) · todos {_evo_pct(mt)}")
