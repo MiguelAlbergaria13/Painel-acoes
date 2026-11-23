@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V158", "23/11/2026"
+VERSAO, DATA_VERSAO = "V159", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -7913,9 +7913,9 @@ def folha_evolucao(wb):
     ws.row_dimensions[2].height = 92
     botao(ws, "B4", "▶ GERAR EVOLUÇÃO", "painelacoes://evolucao", "1F4E79", "16365C", 11)
     ws.merge_cells("B4:D5")
-    botao(ws, "P4", "▶ ANALISTAS vs VALOR JUSTO (há 1 ano)", "painelacoes://alvojusto", "7030A0", "4B2070", 10)
+    botao(ws, "P4", "▶ ANALISTAS vs VALOR JUSTO (12 datas)", "painelacoes://alvojusto", "7030A0", "4B2070", 10)
     ws.merge_cells("P4:S5")
-    ws["P6"] = "Abre um ficheiro à parte: o que previam há um ano e o que aconteceu."
+    ws["P6"] = "Abre um ficheiro à parte: o que previam em 12 datas (3 anos) e o que aconteceu no ano seguinte."
     ws["P6"].font = Font(size=8, italic=True, color="595959")
     ws["B6"] = g.get("gerado") or "Ainda não gerado."
     ws["B6"].font = Font(size=9, color="7030A0")
@@ -9960,46 +9960,62 @@ def esef_preparar(linhas_acoes, ini, fim):
 # ======================================================= analistas vs valor justo, comparados com o que aconteceu (V158)
 FICH_ALVO_JUSTO = os.path.join(PASTA, BASE + "_analistas_vs_justo.xlsx")
 AJ_MIN_FIRMAS = 3                  # consenso só com pelo menos 3 casas de análise
+AJ_DATAS, AJ_PASSO_MESES = 12, 3   # V159: 12 datas de partida, de 3 em 3 meses (a mais recente há 1 ano)
+AJ_MAX = 3.0                       # potencial acima de +300% ou abaixo de −90%: dado errado (fica de fora)
 
 
-def _aj_consenso(t, dia, yf):
-    """Preço-alvo médio dos analistas em «dia»: para cada casa de análise, o último alvo publicado nos 12 meses
-    antes (histórico de alterações do Yahoo), em ações de hoje (desdobramentos depois corrigidos). -> (alvo, n)."""
+def _aj_historico(tk):
+    """Histórico de alterações dos analistas (data, casa, alvo) e desdobramentos de um ticker do Yahoo."""
     import pandas as pd
-    tk = yf.Ticker(t)
     ud = getattr(tk, "upgrades_downgrades", None)
     if ud is None or not len(ud) or "currentPriceTarget" not in ud.columns:
-        return None, 0
-    ud = ud.reset_index()
-    col_d = "GradeDate" if "GradeDate" in ud.columns else ud.columns[0]
-    ud[col_d] = pd.to_datetime(ud[col_d], errors="coerce")
-    if getattr(ud[col_d].dt, "tz", None) is not None:
-        ud[col_d] = ud[col_d].dt.tz_localize(None)
-    dia = pd.Timestamp(dia)
-    ud = ud[(ud[col_d] <= dia) & (ud[col_d] > dia - pd.Timedelta(days=365))]
-    ud = ud[pd.to_numeric(ud["currentPriceTarget"], errors="coerce") > 0]
-    if not len(ud):
-        return None, 0
-    ult = ud.sort_values(col_d).groupby("Firm").tail(1)
+        ud = None
+    else:
+        ud = ud.reset_index()
+        col_d = "GradeDate" if "GradeDate" in ud.columns else ud.columns[0]
+        ud = ud.rename(columns={col_d: "_dia"})
+        ud["_dia"] = pd.to_datetime(ud["_dia"], errors="coerce")
+        if getattr(ud["_dia"].dt, "tz", None) is not None:
+            ud["_dia"] = ud["_dia"].dt.tz_localize(None)
+        ud["_alvo"] = pd.to_numeric(ud["currentPriceTarget"], errors="coerce")
+        ud = ud[(ud["_alvo"] > 0) & ud["_dia"].notna()].sort_values("_dia")
     try:
         sp = tk.splits
         if getattr(sp.index, "tz", None) is not None:
             sp.index = sp.index.tz_localize(None)
-        fator = float(sp[(sp.index > dia) & (sp > 0)].prod()) if len(sp) else 1.0
     except Exception:
-        fator = 1.0
+        sp = None
+    return ud, sp
+
+
+def _aj_consenso(ud, sp, dia):
+    """Preço-alvo médio em «dia»: o último alvo de cada casa de análise nos 12 meses antes, em ações de hoje
+    (desdobramentos depois de «dia» corrigidos, como as cotações do Yahoo). -> (alvo, nº de casas)."""
+    import pandas as pd
+    if ud is None or not len(ud):
+        return None, 0
+    dia = pd.Timestamp(dia)
+    x = ud[(ud["_dia"] <= dia) & (ud["_dia"] > dia - pd.Timedelta(days=365))]
+    if not len(x):
+        return None, 0
+    ult = x.groupby("Firm").tail(1)
     if len(ult) < AJ_MIN_FIRMAS:
         return None, len(ult)
-    return float(pd.to_numeric(ult["currentPriceTarget"]).mean()) / (fator or 1.0), len(ult)
+    fator = 1.0
+    if sp is not None and len(sp):
+        s_ = sp[(sp.index > dia) & (sp > 0)]
+        fator = float(s_.prod()) if len(s_) else 1.0
+    return float(ult["_alvo"].mean()) / (fator or 1.0), len(ult)
 
 
 def comparar_alvo_justo():
-    """▶ ANALISTAS vs VALOR JUSTO (folha Evolução): há um ano, quanto prometiam o preço-alvo dos analistas e o valor
-    justo (lucros × PER habitual, pelos relatórios SEC / ESEF), e quanto subiu de facto cada ação. Ficheiro à parte."""
+    """▶ ANALISTAS vs VALOR JUSTO (folha Evolução): em 12 datas (de 3 em 3 meses, a mais recente há 1 ano), quanto
+    prometiam o preço-alvo dos analistas e o valor justo (lucros × PER habitual, relatórios SEC / ESEF), e quanto
+    subiu de facto cada ação no ano seguinte. V159: preço e analistas da bolsa principal (mesma moeda). Ficheiro à parte."""
     import pandas as pd
     from datetime import date as date_, timedelta
     from openpyxl import Workbook
-    from openpyxl.chart import ScatterChart, Reference, Series
+    from openpyxl.chart import ScatterChart, BarChart, Reference, Series
     from openpyxl.chart.marker import Marker
     ex = Excel(FICHEIRO)
     carregar_pesos(ex)
@@ -10009,23 +10025,30 @@ def comparar_alvo_justo():
     por_t = {}
     for d in acoes:
         por_t.setdefault(txt(d.get("ticker")).upper(), d)
-    tks = list(por_t)
+    hist = {}                                          # ticker da tabela -> ticker da bolsa principal
+    for t, d in por_t.items():
+        m_ = re.search(r"principal: .* (\S+)$", txt(d.get("bolsa")))
+        hist[t] = m_.group(1).upper() if m_ else t
     hoje = date_.today()
-    ini = hoje - timedelta(days=int(5 * 365.25))
+    anos_dados = 1 + (AJ_DATAS - 1) * AJ_PASSO_MESES / 12 + 1
+    ini = hoje - timedelta(days=int(anos_dados * 365.25) + 30)
     yf = _yf()
-    print(f"Analistas vs valor justo: cotações de {len(tks)} ações ...")
+    pedir = sorted(set(hist.values()))
+    print(f"Analistas vs valor justo: cotações de {len(pedir)} ações (bolsa principal) ...")
     try:
-        h = _por_ticker(yf.download(tks, start=ini.strftime("%Y-%m-%d"), end=(hoje + timedelta(days=1)).strftime("%Y-%m-%d"),
-                                    interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=True), tks)
+        h = _por_ticker(yf.download(pedir, start=ini.strftime("%Y-%m-%d"), end=(hoje + timedelta(days=1)).strftime("%Y-%m-%d"),
+                                    interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=True), pedir)
     except Exception as e:
         print(f"   sem cotações: {e}")
         sys.exit(1)
     P = {}
-    for t in tks:
-        df = h.get(t) if hasattr(h, "get") else None
+    for t, th in hist.items():
+        df = h.get(th) if hasattr(h, "get") else None
         if df is None or "Close" not in df:
             continue
         s = df["Close"].dropna()
+        if len(s) < 300:
+            continue
         if getattr(s.index, "tz", None) is not None:
             s.index = s.index.tz_localize(None)
         s.index = s.index.normalize()
@@ -10034,145 +10057,198 @@ def comparar_alvo_justo():
         print("   sem cotações.")
         sys.exit(1)
     fim = max(s.index[-1] for s in P.values())
-    dia = pd.Timestamp(fim) - pd.DateOffset(years=1)
-    print(f"   data de partida: {dia:%d/%m/%Y} (há 1 ano) · fim: {fim:%d/%m/%Y}")
+    datas = [pd.Timestamp(fim) - pd.DateOffset(years=1) - pd.DateOffset(months=AJ_PASSO_MESES * k)
+             for k in range(AJ_DATAS)][::-1]
+    print(f"   {len(datas)} datas de partida, de {datas[0]:%d/%m/%Y} a {datas[-1]:%d/%m/%Y}, cada uma com 1 ano à frente")
     sec = {}
     try:
-        sec = sec_preparar([por_t[t] for t in P], dia.to_pydatetime().date() - timedelta(days=30), hoje)
+        sec = sec_preparar([por_t[t] for t in P], datas[0].to_pydatetime().date() - timedelta(days=30), hoje)
     except Exception as e:
         print(f"   SEC/ESEF: {e}")
-    print(f"   valor justo de há 1 ano: {len(sec)} ações com relatórios · a ler o histórico dos analistas ...")
-    linhas = []
+    print(f"   valor justo: {len(sec)} ações com relatórios · a ler o histórico dos analistas ...")
+    analistas = {}
     for i, t in enumerate(P):
-        s = P[t]
-        s0 = s[s.index <= dia]
-        if not len(s0) or s0.index[-1] < dia - pd.Timedelta(days=10):
-            continue
-        p0, p1 = float(s0.iloc[-1]), float(s.iloc[-1])
-        real = p1 / p0 - 1
         try:
-            alvo, nf = _aj_consenso(t, dia, yf)
+            analistas[t] = _aj_historico(yf.Ticker(hist[t]))
         except Exception:
-            alvo, nf = None, 0
-        jp = None
-        if t in sec:
-            try:
-                jp = sec[t].em(dia).get("justo_pct")
-            except Exception:
-                jp = None
-        pa = alvo / p0 - 1 if alvo else None
-        if pa is None and jp is None:
-            continue
-        linhas.append({"t": t, "nome": txt(por_t[t].get("nome")) or t, "p0": p0, "p1": p1, "alvo": alvo, "nf": nf,
-                       "pa": pa, "pj": jp, "real": real})
+            analistas[t] = (None, None)
         if (i + 1) % 25 == 0:
             print(f"   {i + 1}/{len(P)} ...")
+    casos = []
+    for dia in datas:
+        dia1 = dia + pd.DateOffset(years=1)
+        for t, s in P.items():
+            s0, s1 = s[s.index <= dia], s[s.index <= dia1]
+            if not len(s0) or s0.index[-1] < dia - pd.Timedelta(days=10) or s1.index[-1] < dia1 - pd.Timedelta(days=10):
+                continue
+            p0, p1 = float(s0.iloc[-1]), float(s1.iloc[-1])
+            ud, sp = analistas.get(t, (None, None))
+            alvo, nf = _aj_consenso(ud, sp, dia)
+            pa = alvo / p0 - 1 if alvo else None
+            if pa is not None and not (-0.9 < pa < AJ_MAX):
+                pa = None
+            jp = None
+            if t in sec:
+                try:
+                    jp = sec[t].em(dia).get("justo_pct")
+                except Exception:
+                    jp = None
+                if jp is not None and not (-0.99 < jp < 10):
+                    jp = None
+            if pa is None and jp is None:
+                continue
+            casos.append({"dia": dia, "t": t, "th": hist[t], "nome": txt(por_t[t].get("nome")) or t, "p0": p0,
+                          "p1": p1, "alvo": alvo, "nf": nf, "pa": pa, "pj": jp, "real": p1 / p0 - 1})
+    if not casos:
+        print("   sem casos.")
+        sys.exit(1)
+    C = pd.DataFrame(casos)
 
-    def resumo(chave):
-        xs = [l for l in linhas if l[chave] is not None]
-        if len(xs) < 5:
-            return None
-        df = pd.DataFrame(xs)
-        rho = float(df[chave].rank().corr(df["real"].rank()))
-        q = df.sort_values(chave)
-        k = max(1, len(q) // 3)
-        return {"n": len(xs), "prev": float(df[chave].median()), "real": float(df["real"].median()),
-                "rho": rho, "top": float(q["real"].iloc[-k:].median()), "baixo": float(q["real"].iloc[:k].median()),
-                "erro": float((df[chave] - df["real"]).abs().median()),
-                "sentido": float(((df[chave] > 0) == (df["real"] > 0)).mean())}
-    r_a, r_j = resumo("pa"), resumo("pj")
-    ambos = [l for l in linhas if l["pa"] is not None and l["pj"] is not None]
-    r_aa = r_jj = None
-    if len(ambos) >= 5:                                # as mesmas ações nos dois (comparação justa)
-        guard = linhas
-        linhas = ambos
-        r_aa, r_jj = resumo("pa"), resumo("pj")
-        linhas = guard
+    def stats(df, chave):
+        """Por data: correlação de ordem e terço de cima − terço de baixo; depois a média das datas."""
+        x = df[df[chave].notna()]
+        porr = []
+        for dia, g in x.groupby("dia"):
+            if len(g) < 6:
+                continue
+            q = g.sort_values(chave)
+            k = max(2, len(q) // 3)
+            porr.append({"dia": dia, "n": len(g), "rho": float(g[chave].rank().corr(g["real"].rank())),
+                         "top": float(q["real"].iloc[-k:].median()), "baixo": float(q["real"].iloc[:k].median())})
+        if not porr:
+            return None, []
+        R = pd.DataFrame(porr)
+        return {"n": int(len(x)), "datas": len(R), "prev": float(x[chave].median()), "real": float(x["real"].median()),
+                "rho": float(R["rho"].mean()), "rho_pos": float((R["rho"] > 0).mean()),
+                "top": float(R["top"].mean()), "baixo": float(R["baixo"].mean()),
+                "erro": float((x[chave] - x["real"]).abs().median()),
+                "sentido": float(((x[chave] > 0) == (x["real"] > 0)).mean())}, porr
+    amb = C[C["pa"].notna() & C["pj"].notna()]
+    r_a, pd_a = stats(C, "pa")
+    r_j, pd_j = stats(C, "pj")
+    r_aa, pd_aa = stats(amb, "pa")
+    r_jj, pd_jj = stats(amb, "pj")
     wb = Workbook()
     ws = wb.active
     ws.title = "Resumo"
-    ws["A1"] = f"Analistas vs valor justo: o que previam em {dia:%d/%m/%Y} e o que aconteceu até {fim:%d/%m/%Y}"
+    ws["A1"] = (f"Analistas vs valor justo: {len(datas)} datas de partida ({datas[0]:%d/%m/%Y} a {datas[-1]:%d/%m/%Y}), "
+                f"cada uma com o ano seguinte · {len(C)} casos")
     ws["A1"].font = Font(bold=True, size=13)
-    ws["A2"] = ("Preço-alvo = média do último alvo de cada casa de análise nos 12 meses anteriores (histórico do Yahoo; "
-                f"só com ≥ {AJ_MIN_FIRMAS} casas). Valor justo = lucro por ação × PER habitual de 3 anos, com os relatórios "
-                "já publicados nessa data (SEC nos EUA, ESEF na Europa). Variação real = só o preço (sem dividendos), na "
-                "moeda da bolsa. Medianas (uma ação que dispara não engana).")
+    ws["A2"] = ("Preço-alvo = média do último alvo de cada casa de análise nos 12 meses anteriores (histórico do Yahoo, "
+                f"≥ {AJ_MIN_FIRMAS} casas). Valor justo = lucro por ação × PER habitual de 3 anos, só com os relatórios já "
+                "publicados (SEC nos EUA, ESEF na Europa). Preços e alvos da bolsa principal, na mesma moeda; variação real "
+                "= só o preço, 1 ano depois. Correlação e terços: calculados em cada data e depois a média das datas.")
     ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["A2"].font = Font(italic=True, size=9, color="595959")
-    ws.merge_cells("A2:H2")
-    ws.row_dimensions[2].height = 60
-    cab = ["", "Ações", "Previsto (mediana)", "Real (mediana)", "Correlação de ordem (−1 a 1)",
-           "Real: terço com maior previsão", "Real: terço com menor previsão", "Erro (mediana, em pontos %)",
-           "Acertou no sentido (sobe/desce)"]
+    ws.merge_cells("A2:K2")
+    ws.row_dimensions[2].height = 62
+    cab = ["", "Casos", "Datas", "Previsto (mediana)", "Real (mediana)", "Correlação de ordem (média das datas)",
+           "Datas com correlação positiva", "Real: terço com maior previsão", "Real: terço com menor previsão",
+           "Erro (mediana)", "Acertou no sentido"]
     for j, c_ in enumerate(cab, 1):
         c = ws.cell(4, j, c_)
         c.font, c.alignment = Font(bold=True, color="FFFFFF"), Alignment(wrap_text=True, horizontal="center")
         c.fill = PatternFill("solid", fgColor="1F4E79")
-    ws.row_dimensions[4].height = 45
+    ws.row_dimensions[4].height = 48
     rot = [("Analistas (todas com alvo)", r_a), ("Valor justo (todas com relatórios)", r_j),
-           ("Analistas (as mesmas ações)", r_aa), ("Valor justo (as mesmas ações)", r_jj)]
+           ("Analistas (os mesmos casos)", r_aa), ("Valor justo (os mesmos casos)", r_jj)]
     for i, (nm, r) in enumerate(rot):
         ws.cell(5 + i, 1, nm).font = Font(bold=True)
         if not r:
-            ws.cell(5 + i, 2, "poucas ações")
+            ws.cell(5 + i, 2, "poucos casos")
             continue
-        vals = [r["n"], r["prev"], r["real"], r["rho"], r["top"], r["baixo"], r["erro"], r["sentido"]]
+        vals = [r["n"], r["datas"], r["prev"], r["real"], r["rho"], r["rho_pos"], r["top"], r["baixo"], r["erro"], r["sentido"]]
         for j, v in enumerate(vals, 2):
             c = ws.cell(5 + i, j, v)
-            c.number_format = "0" if j == 2 else "0.00" if j == 5 else "0%"
+            c.number_format = "0" if j in (2, 3) else "0.00" if j == 6 else "0%"
             c.alignment = Alignment(horizontal="center")
-    ws["A10"] = ("Como ler: a correlação de ordem diz se as ações com maior previsão subiram mais (1 = ordem perfeita, "
-                 "0 = nada a ver). O melhor sinal é o que tem maior correlação e maior diferença entre o terço de cima e o "
-                 "de baixo. «Previsto» acima do «Real» = otimismo. Uma só data de partida: é um retrato, não uma prova.")
+    ws["A10"] = ("Como ler: compara sobretudo as duas últimas linhas (os mesmos casos). Correlação de ordem > 0 = as ações "
+                 "com maior previsão subiram mais no ano seguinte; o melhor sinal tem maior correlação, mais datas positivas "
+                 "e maior diferença entre o terço de cima e o de baixo. «Previsto» acima do «Real» = otimismo.")
     ws["A10"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["A10"].font = Font(size=9)
-    ws.merge_cells("A10:H10")
-    ws.row_dimensions[10].height = 48
-    ws.column_dimensions["A"].width = 34
-    for col in "BCDEFGHI":
-        ws.column_dimensions[col].width = 15
-    wd = wb.create_sheet("Ações")
-    cab2 = ["Ticker", "Empresa", f"Preço {dia:%d/%m/%Y}", f"Preço {fim:%d/%m/%Y}", "Variação real",
-            "Preço-alvo de então", "Casas de análise", "Previsão analistas", "Previsão valor justo",
+    ws.merge_cells("A10:K10")
+    ws.row_dimensions[10].height = 46
+    ws.column_dimensions["A"].width = 32
+    for col in "BCDEFGHIJK":
+        ws.column_dimensions[col].width = 13
+    # por data (os mesmos casos)
+    wdd = wb.create_sheet("Por data")
+    for j, c_ in enumerate(["Data de partida", "Casos", "Correlação analistas", "Correlação valor justo",
+                            "Analistas: cima − baixo", "Valor justo: cima − baixo"], 1):
+        c = wdd.cell(1, j, c_)
+        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
+        c.alignment = Alignment(wrap_text=True, horizontal="center")
+    ma = {x["dia"]: x for x in (pd_aa if pd_aa else pd_a)}   # os mesmos casos; sem eles, todos
+    mj = {x["dia"]: x for x in (pd_jj if pd_jj else pd_j)}
+    dias_ = sorted(set(ma) | set(mj))
+    for i, dia in enumerate(dias_, 2):
+        a_, j_ = ma.get(dia), mj.get(dia)
+        vals = [dia.to_pydatetime(), (a_ or j_)["n"], a_ and a_["rho"], j_ and j_["rho"],
+                a_ and a_["top"] - a_["baixo"], j_ and j_["top"] - j_["baixo"]]
+        for j, v in enumerate(vals, 1):
+            c = wdd.cell(i, j, v)
+            c.number_format = "dd/mm/yyyy" if j == 1 else "0" if j == 2 else "0.00" if j in (3, 4) else "0%"
+    for col, w in zip("ABCDEF", (13, 8, 13, 13, 13, 13)):
+        wdd.column_dimensions[col].width = w
+    if dias_:
+        ch = BarChart()
+        ch.title, ch.style = "Correlação de ordem em cada data", 10
+        ch.add_data(Reference(wdd, min_col=3, max_col=4, min_row=1, max_row=len(dias_) + 1), titles_from_data=True)
+        ch.set_categories(Reference(wdd, min_col=1, min_row=2, max_row=len(dias_) + 1))
+        ch.x_axis.number_format = "mm/yy"
+        ch.x_axis.tickLblPos = "low"
+        ch.x_axis.delete = ch.y_axis.delete = False
+        ch.series[0].graphicalProperties.solidFill = "1F4E79"
+        ch.series[1].graphicalProperties.solidFill = "1E7B34"
+        ch.width, ch.height = 22, 9
+        ws.add_chart(ch, "A12")
+    # casos
+    wd = wb.create_sheet("Casos")
+    cab2 = ["Data de partida", "Ticker (tabela)", "Ticker usado", "Empresa", "Preço de partida", "Preço 1 ano depois",
+            "Variação real", "Preço-alvo de então", "Casas de análise", "Previsão analistas", "Previsão valor justo",
             "Erro analistas", "Erro valor justo"]
     for j, c_ in enumerate(cab2, 1):
         c = wd.cell(1, j, c_)
         c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
         c.alignment = Alignment(wrap_text=True, horizontal="center")
-    linhas.sort(key=lambda l: -l["real"])
-    for i, l in enumerate(linhas, 2):
-        vals = [l["t"], l["nome"], l["p0"], l["p1"], l["real"], l["alvo"], l["nf"] or None, l["pa"], l["pj"],
-                (l["pa"] - l["real"]) if l["pa"] is not None else None,
-                (l["pj"] - l["real"]) if l["pj"] is not None else None]
+    C = C.sort_values(["dia", "real"], ascending=[True, False])
+    for i, l in enumerate(C.to_dict("records"), 2):
+        vals = [l["dia"].to_pydatetime(), l["t"], l["th"], l["nome"], l["p0"], l["p1"], l["real"],
+                l["alvo"] if pd.notna(l["alvo"]) else None, l["nf"] or None,
+                l["pa"] if pd.notna(l["pa"]) else None, l["pj"] if pd.notna(l["pj"]) else None,
+                (l["pa"] - l["real"]) if pd.notna(l["pa"]) else None, (l["pj"] - l["real"]) if pd.notna(l["pj"]) else None]
         for j, v in enumerate(vals, 1):
             c = wd.cell(i, j, v)
-            if j in (3, 4, 6):
+            if j == 1:
+                c.number_format = "dd/mm/yyyy"
+            elif j in (5, 6, 8):
                 c.number_format = "0.00"
-            elif j >= 5 and j != 7:
+            elif j >= 7 and j != 9:
                 c.number_format = "0%"
-    wd.freeze_panes = "C2"
-    wd.auto_filter.ref = f"A1:K{len(linhas) + 1}"
-    for col, w in zip("ABCDEFGHIJK", (11, 28, 11, 11, 11, 11, 9, 11, 11, 11, 11)):
+    wd.freeze_panes = "E2"
+    wd.auto_filter.ref = f"A1:M{len(C) + 1}"
+    for col, w in zip("ABCDEFGHIJKLM", (11, 10, 10, 24, 10, 10, 10, 10, 8, 10, 10, 10, 10)):
         wd.column_dimensions[col].width = w
-    n = len(linhas) + 1
-    for k_, (col, titulo, cor) in enumerate((("H", "Analistas: previsto (x) vs real (y)", "1F4E79"),
-                                             ("I", "Valor justo: previsto (x) vs real (y)", "1E7B34"))):
+    n = len(C) + 1
+    for k_, (col, titulo, cor) in enumerate(((10, "Analistas: previsto (x) vs real (y)", "1F4E79"),
+                                             (11, "Valor justo: previsto (x) vs real (y)", "1E7B34"))):
         ch = ScatterChart()
         ch.title, ch.style = titulo, 13
         ch.x_axis.title, ch.y_axis.title = "previsto", "real"
         ch.x_axis.number_format = ch.y_axis.number_format = "0%"
         ch.x_axis.tickLblPos = ch.y_axis.tickLblPos = "low"
         ch.x_axis.delete = ch.y_axis.delete = False
-        sr = Series(Reference(wd, min_col=5, min_row=2, max_row=n),
-                    Reference(wd, min_col=ord(col) - 64, min_row=2, max_row=n), title=titulo)
-        sr.marker = Marker(symbol="circle", size=5)
+        sr = Series(Reference(wd, min_col=7, min_row=2, max_row=n), Reference(wd, min_col=col, min_row=2, max_row=n),
+                    title=titulo)
+        sr.marker = Marker(symbol="circle", size=4)
         sr.marker.graphicalProperties.solidFill = cor
         sr.marker.graphicalProperties.line.solidFill = cor
         sr.graphicalProperties.line.noFill = True
         ch.series.append(sr)
         ch.legend = None
         ch.width, ch.height = 14, 9
-        ws.add_chart(ch, f"{'A' if k_ == 0 else 'E'}12")
+        ws.add_chart(ch, f"{'A' if k_ == 0 else 'F'}31")
     try:
         wb.save(FICH_ALVO_JUSTO)
     except PermissionError:
@@ -10180,8 +10256,8 @@ def comparar_alvo_justo():
         sys.exit(1)
     for nm, r in rot:
         if r:
-            print(f"   {nm:36} n={r['n']:3d} · previsto {r['prev']:+.0%} · real {r['real']:+.0%} · "
-                  f"correlação {r['rho']:+.2f} · terço de cima {r['top']:+.0%} / de baixo {r['baixo']:+.0%}")
+            print(f"   {nm:34} {r['n']:4d} casos · correlação {r['rho']:+.2f} (positiva em {r['rho_pos']:.0%} das datas)"
+                  f" · terço de cima {r['top']:+.0%} / de baixo {r['baixo']:+.0%}")
     print(f"Pronto: {FICH_ALVO_JUSTO}")
     try:
         os.startfile(FICH_ALVO_JUSTO)
