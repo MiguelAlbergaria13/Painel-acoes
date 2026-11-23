@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V151", "22/11/2026"
+VERSAO, DATA_VERSAO = "V153", "23/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1165,6 +1165,10 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
         folha_historico(wb, linhas, etfs)
     except Exception as e:
         print("   aviso: folha Histórico não criada:", e)
+    try:
+        folha_evolucao(wb)
+    except Exception as e:
+        print("   aviso: folha Evolução não criada:", e)
     try:
         folha_comparar(wb)
     except Exception as e:
@@ -7611,6 +7615,8 @@ def main():
         Excel(FICHEIRO).ops([{"op": "fechar_quadro"}], guardar=True)
     elif "://historico" in arg:              # folha Histórico: ▶ GERAR HISTÓRICO
         calcular_historico()
+    elif "://evolucao" in arg:               # folha Evolução: ▶ GERAR EVOLUÇÃO
+        calcular_evolucao()
     elif "://compra" in arg:                 # folha Compra: ▶ CALCULAR COMPRA
         calcular_compra()
     elif "simular" in arg:                   # folha Simulador: ▶ SIMULAR (calcula à parte)
@@ -7844,6 +7850,273 @@ def atualizar_tudo(so=None, servidor=None):
         if mc:
             print(f"Caras (nível de preço até {PESOS['nivel_caro']:.1f}, a azul): {len(mc)} de {len(linhas)} ações "
                   "(limite na folha Ponderações).")
+
+
+# ================================================================================================ Evolução (V152)
+FOLHA_EVO = "Evolução"
+FICH_EVO = os.path.join(PASTA, BASE + "_evolucao.json")
+EVO_NF, EVO_NM = 40, 10            # séries de compra forte (no máximo) e de compra média (as 10 de maior nota)
+EVO_PTS = 262                      # pontos por gráfico (5 anos: um a cada ~5 dias de bolsa)
+EVO_H = 25                         # linhas por bloco (título, resumo, gráfico, lista)
+EVO_COL0 = 30                      # coluna AD: dados dos gráficos (escondidos)
+EVO_L0 = 8                         # 1.ª linha dos dados (a de cima tem os nomes das séries)
+EVO_NC = 2 + EVO_NM + EVO_NF       # colunas por gráfico: data, média de todas, compra média, compra forte
+EVO_V = 1
+EVO_COR_F, EVO_COR_M, EVO_COR_T = "1E7B34", "A9D18E", "7F7F7F"
+EVO_FIXAS = (("há 5 anos", 60), ("há 3 anos", 36), ("há 1 ano", 12), ("há 6 meses", 6))   # (rótulo, meses)
+EVO_NA = 5                         # datas aleatórias
+
+
+def _evo_lin(b):
+    """1.ª linha do bloco b (0-8 ações, 9-17 ETFs)."""
+    n = len(EVO_FIXAS) + EVO_NA
+    return 8 + b * EVO_H + (2 if b >= n else 0)
+
+
+def _evo_col(b):
+    return EVO_COL0 + b * EVO_NC
+
+
+def folha_evolucao(wb):
+    """Folha Evolução: em datas passadas (5, 3 e 1 ano, 6 meses e 5 datas aleatórias), que títulos o painel dava como
+    «Compra forte» e as 10 primeiras «Compra média» (sem «esperar»), e como evoluíram desde então até hoje."""
+    from openpyxl.chart import LineChart, Reference, Series
+    from openpyxl.chart.marker import Marker
+    from openpyxl.chart.shapes import GraphicalProperties
+    from openpyxl.drawing.line import LineProperties
+    g = _ler_json(FICH_EVO, {})
+    if g.get("v") != EVO_V:
+        g = {}
+    ws = wb.create_sheet(FOLHA_EVO)
+    ws["A1"] = "Evolução das compras: o que o painel aconselhava em datas passadas e o que aconteceu depois"
+    ws["A1"].font = Font(size=14, bold=True)
+    ws["B2"] = ("Carrega em ▶ GERAR EVOLUÇÃO. Para cada data (há 5 anos, 3 anos, 1 ano, 6 meses e 5 datas aleatórias, "
+                "novas em cada geração), o painel calcula a decisão de todos os títulos das folhas Ações e ETFs com as "
+                "regras e pesos atuais, mas só com o que se sabia nesse dia (como na folha Histórico: cotações e, nas "
+                "ações dos EUA, os relatórios da SEC; sem analistas). Cada gráfico mostra, a partir dessa data (= 100), "
+                f"todos os «Compra forte» (verde escuro, até {EVO_NF}) e as {EVO_NM} «Compra média» de maior nota global "
+                "(verde claro); «esperar» não entra. A linha cinzenta tracejada é a média de todos os títulos do grupo "
+                "(ações ou ETFs), para comparar. Cotações em euros, com dividendos, escala logarítmica. Atenção: a lista "
+                "é a de hoje (títulos que entraram por terem subido favorecem o resultado) e os fundamentos passados só "
+                "existem para as ações dos EUA. Os ETFs recebem, em cada data, a nota e o nível de preço das suas ações "
+                "(pela composição de hoje), como na tabela: com nível de preço, compra forte a partir de 3,95. Gerar demora alguns minutos (todas as cotações de 12 anos).")
+    ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["B2"].font = Font(italic=True, size=9, color="595959")
+    ws.merge_cells("B2:N2")
+    ws.row_dimensions[2].height = 92
+    botao(ws, "B4", "▶ GERAR EVOLUÇÃO", "painelacoes://evolucao", "1F4E79", "16365C", 11)
+    ws.merge_cells("B4:D5")
+    ws["F4"] = g.get("gerado") or "Ainda não gerado."
+    ws["F4"].font = Font(size=9, color="7030A0")
+    ws.column_dimensions["A"].width = 3
+    n = len(EVO_FIXAS) + EVO_NA
+    for lin, txt_ in ((7, "AÇÕES"), (_evo_lin(n) - 2, "ETFs")):
+        c = ws.cell(lin, 2, txt_)
+        c.font, c.fill = Font(bold=True, size=12, color="FFFFFF"), PatternFill("solid", fgColor="1F4E79")
+        for j in range(3, 15):
+            ws.cell(lin, j).fill = PatternFill("solid", fgColor="1F4E79")
+    blocos = g.get("blocos") or []
+    for c in range(EVO_COL0, EVO_COL0 + 2 * n * EVO_NC):
+        ws.column_dimensions[get_column_letter(c)].hidden = True
+    for b in range(2 * n):
+        r0, c0 = _evo_lin(b), _evo_col(b)
+        bl = blocos[b] if b < len(blocos) else {}
+        ws.cell(r0, 2, bl.get("titulo") or ("Ações" if b < n else "ETFs") + " · por gerar").font = Font(bold=True, size=12, color="1F4E79")
+        c = ws.cell(r0 + 1, 2, bl.get("resumo"))
+        c.font, c.alignment = Font(size=9, bold=True), Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=r0 + 1, start_column=2, end_row=r0 + 1, end_column=14)
+        ws.row_dimensions[r0 + 1].height = 26
+        c = ws.cell(r0 + 22, 2, bl.get("lista"))
+        c.font, c.alignment = Font(size=8, color="404040"), Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=r0 + 22, start_column=2, end_row=r0 + 23, end_column=14)
+        ws.row_dimensions[r0 + 22].height = ws.row_dimensions[r0 + 23].height = 30
+        nomes = bl.get("nomes") or (["Data", "Média de todos"] + [f"Compra média {i + 1}" for i in range(EVO_NM)]
+                                    + [f"Compra forte {i + 1}" for i in range(EVO_NF)])
+        for j, nm in enumerate(nomes[:EVO_NC]):
+            ws.cell(EVO_L0 - 1, c0 + j, nm)
+        for i, lin in enumerate((bl.get("dados") or [])[:EVO_PTS]):
+            for j, v in enumerate(lin[:EVO_NC]):
+                if j == 0 and isinstance(v, str):
+                    try:
+                        v = datetime.strptime(v, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+                ws.cell(EVO_L0 + i, c0 + j, v)
+        for r in range(EVO_L0, EVO_L0 + EVO_PTS):
+            ws.cell(r, c0).number_format = "dd/mm/yyyy"
+        ch = LineChart()                                # eixo das datas = só os pontos que existem
+        ch.style = 13
+        xs = Reference(ws, min_col=c0, min_row=EVO_L0, max_row=EVO_L0 + EVO_PTS - 1)
+        for j in range(1, EVO_NC):
+            sr = Series(Reference(ws, min_col=c0 + j, min_row=EVO_L0 - 1, max_row=EVO_L0 + EVO_PTS - 1),
+                        title_from_data=True)
+            if j == 1:
+                cor, w, tr = EVO_COR_T, 28000, "dash"
+            elif j < 2 + EVO_NM:
+                cor, w, tr = EVO_COR_M, 15000, None
+            else:
+                cor, w, tr = EVO_COR_F, 17000, None
+            ln = LineProperties(solidFill=cor, w=w)
+            if tr:
+                ln.prstDash = tr
+            sr.graphicalProperties = GraphicalProperties(ln=ln)
+            sr.marker = Marker(symbol="none")
+            sr.smooth = False
+            ch.series.append(sr)
+        ch.set_categories(xs)
+        ch.legend = None
+        ch.x_axis.number_format = "mm-yyyy"
+        ch.x_axis.majorGridlines = None
+        ch.x_axis.tickLblPos = "low"
+        ch.y_axis.number_format = "0"
+        ch.y_axis.scaling.logBase = 10
+        ch.y_axis.title = "base 100"
+        try:
+            ch.x_axis.delete = False
+            ch.y_axis.delete = False
+            from openpyxl.chart.text import RichText
+            from openpyxl.drawing.text import Paragraph, ParagraphProperties, CharacterProperties
+            for ax in (ch.x_axis, ch.y_axis):
+                ax.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=800)),
+                                                endParaRPr=CharacterProperties(sz=800))])
+        except Exception:
+            pass
+        ch.width, ch.height = 25, 9.6
+        ch.visible_cells_only = False
+        ch.display_blanks = "gap"
+        ws.add_chart(ch, f"B{r0 + 2}")
+
+
+def _evo_pct(v):
+    return f"{v - 100:+.0f}%".replace("-", "−")
+
+
+def calcular_evolucao():
+    """▶ GERAR EVOLUÇÃO (folha Evolução)."""
+    import random
+    import pandas as pd
+    from datetime import date as date_, timedelta
+    ex = Excel(FICHEIRO)
+    carregar_pesos(ex)
+    ultima = get_column_letter(len(COLS))
+    rr = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"} for idx in (1, 2)])
+    linhas, por_t = [], {}
+    for i, tab in zip((1, 2), rr):
+        for d in linhas_por_cabecalho(tab, i):
+            t = txt(d.get("ticker")).upper()
+            if t and t not in por_t:
+                por_t[t] = d
+                linhas.append(d)
+    if not linhas:
+        print("Evolução: as folhas Ações e ETFs não têm títulos.")
+        sys.exit(1)
+    tks = list(por_t)
+    moedas = {t: txt(por_t[t].get("moeda")) or "EUR" for t in tks}
+    tipos = {t: "ETF" if txt(por_t[t].get("tipo")) == "ETF" else "Ação" for t in tks}
+    hoje = date_.today()
+    ini = hoje - timedelta(days=int(12 * 365.25))
+    print(f"Evolução: cotações de {len(tks)} títulos (12 anos, para as médias e as retas) ...")
+    eur, _ = _sim_cotacoes_eur(tks, moedas, ini, hoje)
+    loc = _SIM_LOCAL.get("tab")
+    cols = [t for t in tks if loc is not None and t in loc.columns and t in eur.columns]
+    if not cols:
+        print("Evolução: não consegui as cotações.")
+        sys.exit(1)
+    loc, eur = loc[cols], eur[cols]
+    idx_ = loc.dropna(how="all").index
+    fim = idx_[-1]
+    dia_bolsa = lambda dt: idx_[max(0, idx_.searchsorted(pd.Timestamp(dt), side="right") - 1)]
+    datas = [(r_, dia_bolsa(fim - pd.DateOffset(months=m))) for r_, m in EVO_FIXAS]
+    cand = [d for d in idx_ if fim - pd.DateOffset(years=5) <= d <= fim - pd.Timedelta(days=60)]
+    escolhidas = []
+    random.shuffle(cand)
+    for d in cand:                                   # longe (≥ 3 semanas) das outras datas
+        if all(abs((d - e).days) >= 21 for e in escolhidas + [x for _, x in datas]):
+            escolhidas.append(d)
+        if len(escolhidas) == EVO_NA:
+            break
+    datas += [("data aleatória", d) for d in sorted(escolhidas)]
+    dias = sorted({d for _, d in datas})
+    sec = {}
+    try:
+        sec = sec_preparar([por_t[t] for t in cols if tipos[t] != "ETF"], dias[0], hoje)
+    except Exception as e:
+        print(f"   SEC: {e}")
+    print(f"   a calcular a decisão do painel de {len(cols)} títulos em {len(dias)} datas ({len(sec)} com relatórios da SEC) ...")
+    hold = _sim_etf_hold([por_t[t] for t in cols if tipos[t] == "ETF"], [por_t[t] for t in cols if tipos[t] != "ETF"])
+    dec = {}
+    notas = _sim_notas_painel(loc, tipos, dias, sec, None, dec, hold)
+
+    def nota(dia, t):
+        txt_, ng, nv = dec[(dia, t)]
+        if isinstance(ng, (int, float)) and isinstance(nv, (int, float)):
+            return float(ng)
+        v = notas.at[dia, t] if dia in notas.index else None
+        return float(v) if isinstance(v, (int, float)) and pd.notna(v) else 0.0
+
+    nome = lambda t: txt(por_t[t].get("codigo")) or t
+    blocos = []
+    for grp, rot_g in (("Ação", "Ações"), ("ETF", "ETFs")):
+        todos = [t for t in cols if tipos[t] == grp]
+        for rot, dia in datas:
+            com = [t for t in todos if (dia, t) in dec]
+            fortes = sorted([t for t in com if _his_classe(dec[(dia, t)][0]) == "forte"], key=lambda t: -nota(dia, t))
+            medias = sorted([t for t in com if _his_classe(dec[(dia, t)][0]) == "media"], key=lambda t: -nota(dia, t))
+            nf_tot, nm_tot = len(fortes), len(medias)
+            fortes, medias = fortes[:EVO_NF], medias[:EVO_NM]
+            seg = eur.loc[dia:].ffill()
+            base = eur.loc[dia]
+            ok = [t for t in todos if pd.notna(base[t]) and base[t] > 0]
+            norm = seg[ok] / base[ok] * 100
+            media_todos = norm.mean(axis=1)
+            npts = len(seg)
+            passo = max(1, -(-(npts - 1) // (EVO_PTS - 1)))
+            pos = list(range(0, npts, passo))
+            if pos[-1] != npts - 1:
+                pos.append(npts - 1)
+            sel_m = [t for t in medias if t in ok]
+            sel_f = [t for t in fortes if t in ok]
+            dados = []
+            for p_ in pos[:EVO_PTS]:
+                lin = [seg.index[p_].strftime("%Y-%m-%d"), round(float(media_todos.iloc[p_]), 2)]
+                lin += [round(float(norm[t].iloc[p_]), 2) for t in sel_m] + [None] * (EVO_NM - len(sel_m))
+                lin += [round(float(norm[t].iloc[p_]), 2) for t in sel_f] + [None] * (EVO_NF - len(sel_f))
+                dados.append(lin)
+            fim_v = {t: float(norm[t].iloc[-1]) for t in sel_m + sel_f}
+            med = lambda ts: sum(fim_v[t] for t in ts) / len(ts) if ts else None
+            partes = []
+            mf, mm, mt = med(sel_f), med(sel_m), float(media_todos.iloc[-1])
+            partes.append(f"Compra forte: {nf_tot} título(s)" + (f", em média {_evo_pct(mf)}" if mf is not None else "")
+                          + (f" (no gráfico os {EVO_NF} de maior nota)" if nf_tot > EVO_NF else ""))
+            partes.append(f"Compra média: {len(sel_m)} de {nm_tot}" + (f", em média {_evo_pct(mm)}" if mm is not None else ""))
+            partes.append(f"Todos os {rot_g.lower()} ({len(ok)}): {_evo_pct(mt)}")
+            lst = lambda ts: ", ".join(f"{nome(t)} {_evo_pct(fim_v[t])}" for t in sorted(ts, key=lambda t: -fim_v[t]))
+            lista = (("Forte: " + lst(sel_f)) if sel_f else "Forte: nenhum") + "   ·   " + \
+                    (("Média: " + lst(sel_m)) if sel_m else "Média: nenhum")
+            blocos.append({"titulo": f"{rot_g} · {rot} ({dia:%d/%m/%Y}) → {fim:%d/%m/%Y}",
+                           "resumo": " · ".join(partes) + " (até hoje)", "lista": lista,
+                           "nomes": ["Data", f"Média de todos os {rot_g.lower()}"]
+                                    + [nome(t) for t in sel_m] + [f"—m{i}" for i in range(EVO_NM - len(sel_m))]
+                                    + [nome(t) for t in sel_f] + [f"—f{i}" for i in range(EVO_NF - len(sel_f))],
+                           "dados": dados})
+            print(f"   {rot_g:5} {dia:%d/%m/%Y}: forte {nf_tot:3d} ({_evo_pct(mf) if mf is not None else '—':>6}) · "
+                  f"média {len(sel_m):2d}/{nm_tot:3d} ({_evo_pct(mm) if mm is not None else '—':>6}) · todos {_evo_pct(mt)}")
+    gerado = f"Gerado em {datetime.now():%d/%m/%Y %H:%M} · cotações até {fim:%d/%m/%Y}"
+    _gravar_json(FICH_EVO, {"v": EVO_V, "gerado": gerado, "blocos": blocos})
+    ops = [{"op": "escrever", "folha": FOLHA_EVO, "rng": "F4", "valores": [[gerado]]}]
+    for b, bl in enumerate(blocos):
+        r0, c0 = _evo_lin(b), _evo_col(b)
+        ops.append({"op": "escrever", "folha": FOLHA_EVO, "rng": f"B{r0}:B{r0 + 1}",
+                    "valores": [[bl["titulo"]], [bl["resumo"]]]})
+        ops.append({"op": "escrever", "folha": FOLHA_EVO, "rng": f"B{r0 + 22}", "valores": [[bl["lista"]]]})
+        grade = [bl["nomes"]] + [[datetime.strptime(l_[0], "%Y-%m-%d")] + l_[1:] for l_ in bl["dados"]]
+        grade += [[None] * EVO_NC] * (EVO_PTS + 1 - len(grade))
+        ops.append({"op": "escrever", "folha": FOLHA_EVO,
+                    "rng": f"{get_column_letter(c0)}{EVO_L0 - 1}:{get_column_letter(c0 + EVO_NC - 1)}{EVO_L0 + EVO_PTS - 1}",
+                    "valores": grade})
+    ex.ops(ops, guardar=True)
+    print("Evolução: pronto (folha Evolução).")
+
 
 
 # ================================================================================================ Simulador
@@ -9176,7 +9449,29 @@ def sec_preparar(linhas_acoes, ini, fim):
 _SIM_LOCAL = {}
 
 
-def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
+def _sim_etf_hold(etfs, acoes):
+    """V153: {ETF: [(ticker da ação na folha Ações, peso), ...]} pela composição guardada dos ETFs (a de hoje), para o
+    Simulador e a Evolução darem aos ETFs, em cada data, a nota ponderada e o nível de preço das suas ações."""
+    comp = _ler_json(FICH_COMP, {})
+    indice = {}
+    for d in acoes:
+        for c in _chaves_acao(d) | {_nome_chave(d.get("nome"))} - {None}:
+            indice.setdefault(c, d)
+    out = {}
+    for e in etfs:
+        c = comp.get(txt(e.get("ticker"))) or comp.get(txt(e.get("_orig"))) or {}
+        h = {}
+        for sym, nm, w in c.get("hold", []):
+            a = _acao_de(sym, indice, nm)
+            ta = txt(a.get("ticker")).upper() if a is not None else ""
+            if ta and isinstance(w, (int, float)) and w > 0:
+                h[ta] = h.get(ta, 0.0) + float(w)
+        if h:
+            out[txt(e.get("ticker")).upper()] = list(h.items())
+    return out
+
+
+def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None, etf_hold=None):
     """Nota geral do PAINEL (as mesmas regras: pontuar + nota_global) em cada dia de «dias», só com as cotações até
     esse dia (sem analistas, valor justo, qualidade e saúde, que não há para datas passadas: contam como o sinal,
     como no painel). P = cotações diárias na moeda da bolsa. -> DataFrame (dias × tickers)."""
@@ -9222,7 +9517,9 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
     dias = [d for d in dias if d in P.index]
     out = pd.DataFrame(index=pd.DatetimeIndex(sorted(set(dias))), columns=P.columns, dtype=float)
     etfs = [t for t in P.columns if tipos.get(t) == "ETF"]
+    ordem_cols = [t for t in P.columns if tipos.get(t) != "ETF"] + etfs     # V153: as ações antes dos ETFs (que usam as notas delas)
     for dia in out.index:
+        dia_nt, dia_nv = {}, {}
         fm = M.index[M.index.searchsorted(dia, side="right") - 1] if M.index.searchsorted(dia, side="right") else None
         mes_fechado = fm if fm is not None and fm < dia else (M.index[M.index.get_loc(fm) - 1]
                                                                if fm is not None and M.index.get_loc(fm) > 0 else None)
@@ -9230,7 +9527,7 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
               if pd.notna(ref6.at[dia, t]) and ref6.at[dia, t] and pd.notna(P.at[dia, t])}
         ordem = sorted(m6, key=lambda t: -m6[t])
         pos6 = {t: (i / (len(ordem) - 1) if len(ordem) > 1 else 0.0) for i, t in enumerate(ordem)}
-        for t in P.columns:
+        for t in ordem_cols:
             pr = P.at[dia, t]
             if pd.isna(pr) or nval.at[dia, t] < 200 or pd.isna(m200.at[dia, t]):
                 continue
@@ -9272,17 +9569,32 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None):
                         d["preco"] = pu
                 except Exception:
                     pass
+            if etf_hold and t in etf_hold:              # V153: ETF = as suas ações nesse dia (como na tabela de hoje)
+                sw = swn = swc = swcn = 0.0
+                for a_, w_ in etf_hold[t]:
+                    if a_ in dia_nt:
+                        sw, swn = sw + w_, swn + w_ * dia_nt[a_]
+                    if a_ in dia_nv:
+                        swc, swcn = swc + w_ * dia_nv[a_], swcn + w_
+                if sw > 0:
+                    d["etf_acoes"] = round(swn / sw, 2)
+                if swcn >= 0.15:                        # como na tabela: ≥ 15% do ETF em ações com nível de preço
+                    d["nivel_preco"] = round(swc / swcn, 1)
             pontuar(d, float(pr))
             try:
                 nt = nota_global(d)
             except Exception:
                 nt = None
             d["nota"] = nt                              # V148: a decisão usa a nota (sem ela usava o sinal)
+            if nt is not None and tipos.get(t) != "ETF":
+                dia_nt[t] = nt
+                if isinstance(d.get("nivel_preco"), (int, float)):
+                    dia_nv[t] = d["nivel_preco"]
             if nt is not None:
                 out.at[dia, t] = nt
                 if decisoes is not None:                # folha Histórico: a decisão do painel nesse dia
                     decisoes[(dia, t)] = (decisao_global(d), d.get("nota_geral"), d.get("nivel_preco"))
-            if niveis is not None and isinstance(d.get("nivel_preco"), (int, float)):
+            if niveis is not None and t in niveis.columns and isinstance(d.get("nivel_preco"), (int, float)):
                 niveis.at[dia, t] = d["nivel_preco"]
     return out
 
@@ -9621,7 +9933,15 @@ def simular():
                 nomes.setdefault(t, t)
     print(f"Simulador: {len(pesos)} título(s) · {escolha} · de {ini:%d/%m/%Y} a {fim:%d/%m/%Y} ...")
     ini_dados = ini.replace(year=ini.year - 11) if dinamico else ini   # nota de preços: precisa de 10 anos antes
-    tab_h, sem_cambio = _sim_cotacoes_eur(list(pesos) + ([bench] if bench else []), moedas, ini_dados, fim)
+    hold, extra_h = {}, []
+    if dinamico:                                          # V153: as ações dos ETFs (nota e nível de preço em cada data)
+        try:
+            hold = _sim_etf_hold([d for d in etfs if txt(d.get("ticker")).upper() in pesos], acoes)
+        except Exception:
+            hold = {}
+        extra_h = sorted({a for h in hold.values() for a, _ in h} - set(pesos) - {bench})
+    tab_h, sem_cambio = _sim_cotacoes_eur(list(pesos) + ([bench] if bench else []) + extra_h, moedas, ini_dados, fim)
+    tab_h = tab_h.drop(columns=[t for t in extra_h if t in tab_h.columns])
     notas_p = niveis_p = None
     dias_v = []
     _SIM_LOCAL["espera"] = (0.0, 0)
@@ -9660,14 +9980,15 @@ def simular():
         dias_c = sorted(set(dias_c) | set(dias_v))
         loc = _SIM_LOCAL.get("tab")
         cols = [t for t in pesos if t in tab.columns and loc is not None and t in loc.columns]
+        cols_h = [t for t in extra_h if loc is not None and t in loc.columns]
         sec = {}
         try:                                              # EUA: qualidade, saúde e preço pelos relatórios da SEC
-            sec = sec_preparar([d for d in acoes if txt(d.get("ticker")).upper() in cols], ini, fim)
+            sec = sec_preparar([d for d in acoes if txt(d.get("ticker")).upper() in cols + cols_h], ini, fim)
         except Exception as e:
             print(f"   SEC: {e}")
         print(f"   a calcular a nota do painel de {len(cols)} títulos em {len(dias_c)} datas (só com os dados de cada data) ...")
         niveis_p = pd.DataFrame(index=pd.DatetimeIndex(dias_c), columns=cols, dtype=float)
-        notas_p = _sim_notas_painel(loc[cols], tipos, dias_c, sec, niveis_p).reindex(tab.index)
+        notas_p = _sim_notas_painel(loc[cols + cols_h], tipos, dias_c, sec, niveis_p, None, hold)[cols].reindex(tab.index)
         niveis_p = niveis_p.reindex(tab.index)
     if duplo:                                             # corre cada parte e soma
         unid, inv_t, fluxos = {}, {}, []
@@ -10046,7 +10367,7 @@ def acao_do_botao(arg):
     """(chave, descrição) da ação pedida, para a janela de progresso e para a estimativa do tempo."""
     a = arg.lower()
     for chave, padrao, txt_ in (
-            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("comparar", "comparar", "Comparar notas"),
+            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comparar", "comparar", "Comparar notas"),
             ("ordenar", "ordenar", "Ordenar"),
             ("procurar", "procurar", "Procurar"), ("top", "://top", "Mais significativas"),
             ("base", "://base", "Lista base"), ("acrescentar", "acrescentar", "Acrescentar marcados"),
