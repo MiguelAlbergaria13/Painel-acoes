@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V168", "23/11/2026"
+VERSAO, DATA_VERSAO = "V170", "24/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1177,6 +1177,8 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
         folha_comparar(wb)
     except Exception as e:
         print("   aviso: folha Comparar notas não criada:", e)
+    if FOLHA_CRT in wb.sheetnames and "Carteira" in wb.sheetnames:   # V169: logo a seguir à Carteira
+        wb.move_sheet(FOLHA_CRT, offset=wb.sheetnames.index("Carteira") + 1 - wb.sheetnames.index(FOLHA_CRT))
     for nome in ("Acrescentados", FOLHA_PESOS):       # estas duas no fim (são pouco usadas)
         if nome in wb.sheetnames:
             wb.move_sheet(nome, offset=len(wb.sheetnames) - 1 - wb.sheetnames.index(nome))
@@ -6077,7 +6079,7 @@ function compra(){
   <div class="chk" style="margin-top:6px"><b>📌 Fixos</b><button class="inf" data-i="i4">i</button></div>
   <div class="infx" id="i4">Até 5 ações e 5 ETFs que entram sempre, com a % escrita do valor do seu grupo (ex.: 60% dos ETFs no S&amp;P 500); o resto do grupo divide-se pela nota global pelos outros. Vale a escolha mais recente: a daqui ou a da folha Compra do Excel.</div>
   ${[['a','Ações',D.a],['e','ETFs',D.e]].map(([k,nm,L])=>[0,1,2,3,4].map(i=>{const f=(c['f'+k]||[])[i]||[],t=String(f[0]||'').toUpperCase();
-    return `<div style="display:flex;gap:6px;margin:3px 0;align-items:center"><span id="fn${k}${i}" class="nota" style="min-width:40px;font-size:13px;padding:5px 2px"></span><select id="fs${k}${i}" style="flex:1;min-width:0;font-size:13px"><option value="">${nm}: fixo ${i+1} —</option>${L.map(d=>`<option value="${esc(String(d.t||'').toUpperCase())}"${String(d.t||'').toUpperCase()===t?' selected':''}>${esc(d.n)}</option>`).join('')}</select><input id="fp${k}${i}" inputmode="decimal" placeholder="%" style="width:62px;background:#FFF2CC;border:0;border-radius:8px;text-align:center;font-weight:700;color:#1c1e21" value="${f[1]!=null&&f[1]>0?num(f[1]*100,0)+'%':''}"></div>`;}).join('')).join('')}
+    return `<div style="display:flex;gap:6px;margin:3px 0;align-items:center"><span id="fn${k}${i}" class="nota" style="min-width:40px;font-size:13px;padding:5px 2px"></span><select id="fs${k}${i}" style="flex:1;min-width:0;font-size:13px"><option value="">${nm}: fixo ${i+1} —</option>${L.map(d=>`<option value="${esc(String(d.t||'').toUpperCase())}"${String(d.t||'').toUpperCase()===t?' selected':''}>${esc(d.n)}</option>`).join('')}</select><input id="fp${k}${i}" inputmode="decimal" placeholder="%" style="width:62px;background:#FFF2CC;border:0;border-radius:8px;text-align:center;font-weight:700;color:#1c1e21" value="${f[1]!=null&&f[1]>0?num(f[1]*100,1)+'%':''}"></div>`;}).join('')).join('')}
   <div id="cx" style="color:var(--mu);font-size:11px;margin-top:4px"></div></div><div id="cr"></div>`;
 }
 function calcCompra(){
@@ -6131,7 +6133,7 @@ function calcCompra(){
       <div class="cbt"><button data-k="nq" data-t="${esc(T(d))}" class="${nq.has(T(d))?'on':''}">Não quero</button><button data-k="nd" data-t="${esc(T(d))}" class="${nd.has(T(d))?'on':''}">Não disponível</button></div></div>`;});
     esc_.forEach(d=>{tv+=wd(d)*val;});
     const nesc=esc_.filter(d=>!vis(d)).length;
-    h+=`<h2 class="sec">${nome} (${esc_.filter(d=>!fora(d)).length}) · ${eur(tv)}${sfx>0?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· 📌 fixos ${num(Math.min(1,sfx)*100,0)}%</span>`:''}${nesc?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· ${nesc} escondido${nesc>1?'s':''}</span>`:''}</h2>`+(esc_.length?cards.join(''):
+    h+=`<h2 class="sec">${nome} (${esc_.filter(d=>!fora(d)).length}) · ${eur(tv)}${sfx>0?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· 📌 fixos ${num(Math.min(1,sfx)*100,1)}%</span>`:''}${nesc?` <span style="font-size:11px;font-weight:400;color:var(--mu)">· ${nesc} escondido${nesc>1?'s':''}</span>`:''}</h2>`+(esc_.length?cards.join(''):
       `<div class="card" style="color:var(--mu)">Nenhum título cumpre os critérios: os ${eur(val)} ficam por investir (baixa a nota mínima ou desliga «só com decisão de compra»).</div>`);
   }
   g('cr').innerHTML=h;
@@ -6147,7 +6149,7 @@ function ligarCompra(){
   for(const k of ['a','e'])for(let i=0;i<5;i++){document.getElementById('fs'+k+i).addEventListener('change',calcCompra);
     const e=document.getElementById('fp'+k+i);e.addEventListener('input',calcCompra);
     e.addEventListener('focus',()=>{e.value=e.value.replace('%','').trim();});
-    e.addEventListener('blur',()=>{let v=nPt(e.value);if(v!=null&&v>0&&v<=1)v*=100;e.value=v==null||!(v>0)?'':num(v,0)+'%';});}
+    e.addEventListener('blur',()=>{let v=nPt(e.value);if(v!=null&&v>0&&v<=1)v*=100;e.value=v==null||!(v>0)?'':num(v,1)+'%';});}
   document.querySelectorAll('#cf .inf').forEach(b=>b.addEventListener('click',ev=>{ev.preventDefault();
     document.getElementById(b.dataset.i).classList.toggle('on');}));
   document.getElementById('cr').addEventListener('click',ev=>{const b=ev.target.closest('button[data-k]');if(!b)return;
@@ -8427,7 +8429,7 @@ def folha_compra(wb):
             r = CMP_FIX_L + i
             tk_, pc_, nm_ = (list(fx_[i]) + [None, None, None])[:3] if i < len(fx_) else (None, None, None)
             nm_ = nome_de.get(txt(tk_).upper()) or nm_
-            for c_, v_, fm, al in ((cn, nm_, "@", "left"), (cp_, pc_, "0%", "center")):
+            for c_, v_, fm, al in ((cn, nm_, "@", "left"), (cp_, pc_, "0.0%", "center")):
                 c = ws[f"{c_}{r}"]
                 c.value, c.fill, c.border, c.number_format = v_, amarelo, borda, fm
                 c.font, c.alignment = Font(bold=True), Alignment(horizontal=al)
@@ -8452,11 +8454,11 @@ def folha_compra(wb):
         sm = "+".join(f"IF(N({cp_}{r})>1,N({cp_}{r})/100,N({cp_}{r}))" for r in range(CMP_FIX_L, rs))   # 50 = 50%
         ws[f"{cn}{rs}"] = (f'=IF(({sm})=0,"",IF(({sm})>1,'
                            f'"Soma acima de 100%: os fixos ficam com o grupo todo (em proporção)",'
-                           f'"Soma dos fixos (o resto, "&TEXT(1-({sm}),"0%")&", vai pela nota)"))')
+                           f'"Soma dos fixos (o resto, "&TEXT(1-({sm}),"0.0%")&", vai pela nota)"))')
         ws[f"{cn}{rs}"].font = Font(italic=True, size=9, color="7030A0")
         ws[f"{cn}{rs}"].alignment = Alignment(horizontal="right")
         ws[f"{cp_}{rs}"] = f"={sm}"
-        ws[f"{cp_}{rs}"].number_format, ws[f"{cp_}{rs}"].font = "0%", Font(bold=True, color="7030A0")
+        ws[f"{cp_}{rs}"].number_format, ws[f"{cp_}{rs}"].font = "0.0%", Font(bold=True, color="7030A0")
         ws[f"{cp_}{rs}"].alignment = Alignment(horizontal="center")
     ws[f"C{CMP_L0 - 2}"] = "Resultado"
     ws[f"C{CMP_L0 - 2}"].font = Font(bold=True, size=12)
@@ -10523,7 +10525,7 @@ CRT_PTS = 400                      # pontos por curva (no máximo)
 CRT_CN = 39                        # coluna AM: lista de nomes (para as listas de escolha)
 CRT_C0 = 40                        # coluna AN: dados dos gráficos (escondidos)
 CRT_D0 = 4                         # 1.ª linha dos dados (a 3 tem os nomes das séries)
-CRT_PADRAO = {"anos": 5.0, "passo": 5, "tmin": 12, "pontos": 4, "meia": None}
+CRT_PADRAO = {"anos": 5.0, "passo": 5, "tmin": 12, "pontos": 4, "meia": 3.0}   # V170: meia-vida 3 anos
 CRT_COLS = ("Rent. anual simples (do início)", "Rent. anual ponderada (meia-vida)", "Ponderada − referência",
             "Volatilidade anual", "Ponderada ÷ volatilidade", "% do tempo acima da referência", "Ordem")
 CRT_LBL = 37                       # 1.ª linha dos gráficos de cada título
@@ -10583,7 +10585,7 @@ def folha_comp_rent(wb):
                 "dividendos). Perto de hoje a anualização multiplica o ruído (1 mês com +5% = +80%/ano), por isso o tempo "
                 "mínimo deve ser ≥ 6 meses (12 por omissão). A curva ajustada liga 3 ou 4 pontos (a média da curva em cada "
                 "terço / quarto do período). A média ponderada usa as rentabilidades mensais, cada mês com metade do peso "
-                "do mês «meia-vida» anos mais recente (vazio = extensão ÷ 3): mais peso ao passado recente. «Ponderada − "
+                "do mês «meia-vida» anos mais recente (3 anos por omissão: análise de 5 anos 1,5 a 2; de 10-15 anos 3; de 20 ou mais 4 a 5): mais peso ao passado recente. «Ponderada − "
                 "referência»: pontos por ano acima / abaixo do título de referência (mesmo cálculo). «Ponderada ÷ "
                 "volatilidade»: rentabilidade por unidade de risco. «% do tempo acima»: em quantas datas da curva comprar o "
                 "título rendeu mais do que comprar a referência. Passado não garante futuro.")
@@ -10601,7 +10603,7 @@ def folha_comp_rent(wb):
         or next((n_ for n_, t_ in nomes if "S&P 500" in n_), None)
     entradas = (("Extensão da análise (anos)", p["anos"], "0.00"), ("Periodicidade (dias de bolsa entre pontos)", p["passo"], "0"),
                 ("Tempo mínimo até hoje (meses; ≥ 6)", p["tmin"], "0"), ("Pontos da curva ajustada (3 ou 4)", p["pontos"], "0"),
-                ("Meia-vida da média ponderada (anos; vazio = extensão ÷ 3)", p["meia"], "0.00"),
+                ("Meia-vida da média ponderada (anos; 3 por omissão)", p["meia"] or 3.0, "0.00"),
                 ("Referência (para comparar)", ref_nome, "@"))
     for i, (rot, v_, fm) in enumerate(entradas):
         r = 4 + i
@@ -10835,7 +10837,7 @@ def calcular_comp_rent():
     if not grelha:
         print("   período curto demais (extensão menor do que o tempo mínimo).")
         sys.exit(1)
-    meia = p["meia"] or max(0.5, p["anos"] / 3)
+    meia = p["meia"] or 3.0
 
     def curva(s):
         pf = float(s.iloc[-1])
