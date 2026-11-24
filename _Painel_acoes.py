@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V176", "24/11/2026"
+VERSAO, DATA_VERSAO = "V178", "24/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -10962,33 +10962,60 @@ def calcular_comp_rent():
 # ======================================================= Ações-CFAlt (V171): classificação alternativa das ações
 FOLHA_ALT = "CFAltern"           # V172: era «Ações-CFAlt»; agora ações ou ETFs
 FICH_ALT = os.path.join(PASTA, BASE + "_cfalt.json")
-ALT_L0 = 21                        # cabeçalho da tabela (dados a partir da 22)
-ALT_V = 4                          # V173: muda -> os parâmetros voltam aos aconselhados uma vez
+ALT_L0 = 26                        # cabeçalho da tabela (dados a partir da 27)
+ALT_V = 6                          # V173: muda -> os parâmetros voltam aos aconselhados uma vez
 ALT_MAX = 300
 ALT_METODOS = ("P/E (sem ele: nível; sem ele: tendência)", "Nível do painel (sem ele: tendência)", "Nível do painel",
                "Distância à tendência", "P/E")   # V173; V175: P/E primeiro (ações), ETFs / ouro pelo nível ou tendência
 ALT_PADRAO = {"grupo": "Ações", "data": None, "anos": 10.0, "meia": 3.0, "met": ALT_METODOS[0], "m": 3.0, "n": None, "pe_ref": 20.0, "vol_ref": 0.25, "pe_max": 100.0,
-              "vol_pond": "x", "hmin": 3.0, "k": None, "ref": None, "verde": 0.10}
+              "vol_pond": "x", "hmin": 3.0, "k": None, "ref": None, "det1": "", "verde": 0.10,
+              "base": "Ponderada mensal", "passo": 30.0, "tmin": 6.0}
+ALT_BASES = ("Ponderada mensal", "Curva da Comp Rent (compras periódicas até hoje)")   # V178
 ALT_PAR = (("grupo", "Calcular para (Ações / ETFs)", "@"),
            ("data", "Data de cálculo (vazio = hoje; uma data passada = análise nessa data)", "dd/mm/yyyy"),
            ("anos", "Extensão da análise (anos)", "0.00"),
            ("meia", "Meia-vida da rentabilidade ponderada (anos)", "0.00"),
+           ("base", "Base da nota: rentabilidade ponderada mensal ou curva da Comp Rent", "@"),
+           ("passo", "Curva: periodicidade (dias de bolsa entre compras)", "0"),
+           ("tmin", "Curva: tempo mínimo até hoje (meses; compras mais recentes não contam)", "0"),
            ("met", "Medida do preço (caro / barato)", "@"),
            ("m", "Raiz do fator do preço: fator^(1/m) · m =", "0.0"),
-           ("n", "Raiz do fator volatilidade: (vol ÷ referência)^(1/n) · n = (vazio = não entra)", "0.0"),
+           ("n", "Raiz do fator volatilidade: (vol ÷ referência)^(1/n) · n =", "0.0"),
            ("pe_ref", "P/E de referência (fator = 1)", "0.0"),
            ("vol_ref", "Volatilidade de referência (fator = 1)", "0%"),
            ("pe_max", "P/E máximo (sem lucros ou acima disto: conta este)", "0"),
            ("vol_pond", "Volatilidade ponderada pelo tempo, com a mesma meia-vida (x = sim)", "@"),
            ("hmin", "Histórico mínimo (anos; menos do que isto fica sem nota)", "0.0"),
-           ("k", "Peso da nota global do painel: × (nota ÷ 3)^(1/k) · k = (vazio = não entra)", "0.0"),
+           ("k", "Peso do painel (qualidade e saúde; ETFs: nota global): × (nota ÷ 3)^(1/k) · k =", "0.0"),
            ("ref", "Referência (para «ponderada − referência», como na Comp Rent Títulos)", "@"),
+           ("det1", "Os meus títulos (detidos) primeiro (x = sim)", "@"),
            ("verde", "Verde a partir de (nota alternativa, %/ano)", "0.0%"))
 ALT_CAB = ("Ordem", "Empresa", "Ticker", "Nota alternativa (rent. ajustada, %/ano)", "Rent. anual ponderada",
-           "Rent. anual simples", "Medida do preço (P/E, nível 1-5 ou × tendência)", "Volatilidade anual (usada)", "Fator preço", "Fator volatilidade",
+           "Rent. anual simples", "Rent. da curva (compras periódicas até hoje, ponderada)", "Medida do preço (P/E, nível 1-5 ou × tendência)", "Volatilidade anual (usada)", "Fator preço", "Fator volatilidade",
            "Decisão do painel", "Nota global do painel", "Posição no painel", "Posição aqui − no painel",
            "Real desde a data de cálculo (total)", "Real desde a data de cálculo (por ano)", "Ponderada − referência",
+           "Detido (x)", "Nº de ações detidas", "Valor detido (€)", "Lucro / prejuízo (€)", "Lucro / prejuízo (%)",
            "Observações")
+ALT_IDET = 17                      # V177: índice da coluna «Detido» nas linhas (durante o cálculo)
+ALT_IDET_F = 18                    # V178: ... e na folha (a coluna da curva entra antes de gravar)
+
+
+def _alt_aconselhado(k):
+    """V177: valor aconselhado para mostrar entre parênteses no rótulo do parâmetro."""
+    v = ALT_PADRAO.get(k)
+    if k in ("grupo", "data", "ref"):
+        return ""
+    if k == "met":
+        return " (aconselhado: P/E)"
+    if k == "base":
+        return " (aconselhado: ponderada mensal; no teste deram o mesmo)"
+    if v in (None, ""):
+        return " (vazio = não entra; aconselhado: vazio)" if k in ("n", "k") else " (aconselhado: vazio)"
+    if k in ("vol_ref", "verde"):
+        return f" (aconselhado: {v:.0%})"
+    if isinstance(v, float):
+        return f" (aconselhado: {v:g})"
+    return f" (aconselhado: {v})"
 
 
 def _alt_medidas(s, inicio, meia):
@@ -11016,6 +11043,29 @@ def _alt_medidas(s, inicio, meia):
     md = float((wd * rd.values).sum() / wd.sum())
     vol_p = float(np.sqrt((wd * (rd.values - md) ** 2).sum() / wd.sum() * 252))
     return simples, pond, vol, s.index[0], vol_p
+
+
+def _alt_curva(s, inicio, passo, tmin, meia):
+    """V178: rentabilidade anual de comprar de «passo» em «passo» dias de bolsa e guardar até ao fim da série (como a
+    curva da Comp Rent Títulos), sem as compras dos últimos «tmin» meses; média com mais peso às compras recentes
+    (meia-vida). None se não houver pontos."""
+    import pandas as pd
+    s = s[s.index >= inicio].dropna()
+    if len(s) < 30:
+        return None
+    fim_, pf = s.index[-1], float(s.iloc[-1])
+    corte = fim_ - pd.DateOffset(months=int(round(tmin)))
+    soma = pesos = 0.0
+    for d_, v_ in list(s.items())[::max(1, int(passo))]:
+        if d_ > corte:
+            break
+        anos_ = (fim_ - d_).days / 365.25
+        if anos_ <= 0 or v_ <= 0:
+            continue
+        w = 0.5 ** (anos_ / meia)
+        soma += w * ((pf / float(v_)) ** (1 / anos_) - 1)
+        pesos += w
+    return soma / pesos if pesos else None
 
 
 def _alt_link(nome, r):
@@ -11057,24 +11107,31 @@ def folha_alt(wb):
                 "atual (é o que se paga hoje). Se a rentabilidade for negativa, os fatores multiplicam em vez de dividir (caro e "
                 "arriscado a perder fica pior, não melhor). Sem lucros (P/E negativo / vazio) ou P/E acima do máximo: conta "
                 "o máximo. Ficam sem nota (no fim, com o motivo): histórico mais curto do que o mínimo pedido e cotações suspeitas "
-                "(2 ou mais dias com saltos de ±40%, ou 20 dias seguidos paradas: erros do Yahoo ou bolsas pouco líquidas). "
+                "(2 ou mais saltos de ±40% que voltam atrás em poucos dias, ou 20 dias seguidos paradas: erros do Yahoo ou bolsas pouco líquidas). "
                 "ETFs: P/E do Yahoo quando existe; sem ele o fator P/E é 1. Ordem: da nota maior para a menor. Cor: vermelho no mínimo, verde a partir do valor pedido. "
                 "DATA DE CÁLCULO: com uma data passada, tudo é calculado só com as cotações até essa data (o preço vai pela "
                 "tendência, porque o nível e o P/E são os de hoje) e as duas colunas «Real desde a data» mostram o que "
                 "aconteceu depois: serve para testar a classificação. TESTE (V176, 180 ações e 36 ETFs, 2008-2025): a rentabilidade ponderada deu um sinal fraco mas real a 3 anos; "
                 "dividir pela volatilidade e pelo preço face à tendência não acrescentou nada, por isso n e k vêm vazios (o P/E fica, mas não foi possível testá-lo). "
-                "PESO DO PAINEL (opcional, V175): a nota é multiplicada por "
-                "(nota global do painel ÷ 3)^(1/k), para aproximar da classificação geral (qualidade, saúde, sinal). Compara com a decisão, a nota e a posição do painel (de hoje). É baseada no passado: não garante o futuro.")
+                "PESO DO PAINEL (opcional): a nota é multiplicada por "
+                "(nota ÷ 3)^(1/k), com a média da qualidade e da saúde financeira do painel (nos ETFs, a nota global): "
+                "não usa a nota global nas ações porque essa já tem o preço e a tendência, que aqui já contam. "
+                "OS MEUS TÍTULOS: a amarelo, com o nº de ações, o valor e o lucro da folha Ações / ETFs (muda-os lá). Compara com a decisão, a nota e a posição do painel (de hoje). É baseada no passado: não garante o futuro.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
     ws.merge_cells("B2:P2")
     ws.row_dimensions[2].height = 135
     for i, (k, rot, fm) in enumerate(ALT_PAR):
         r = 4 + i
-        ws.cell(r, 2, rot).font = Font(bold=True, size=9)
+        ws.cell(r, 2, rot + _alt_aconselhado(k)).font = Font(bold=True, size=9)
         c = ws.cell(r, 5, p[k])
         c.fill, c.border, c.number_format = amarelo, borda, fm
         c.font, c.alignment = Font(bold=True), Alignment(horizontal="center")
+    r_n = 4 + len(ALT_PAR) + 1                         # V177: os outros parâmetros da Comp Rent Títulos
+    ws.cell(r_n, 2, "Extensão, meia-vida, referência, periodicidade e tempo mínimo: como na Comp Rent Títulos. A «ponderada "
+                    "mensal» junta os meses (mais peso aos recentes); a «curva» é o que se ganhava por ano comprando de "
+                    "X em X dias e guardando até hoje (mais peso às compras recentes). Os pontos da curva ajustada só servem "
+                    "para o gráfico.").font = Font(italic=True, size=9, color="595959")
     from openpyxl.worksheet.datavalidation import DataValidation as DV_
     dvg = DV_(type="list", formula1='"Ações,ETFs"', allow_blank=False)
     ws.add_data_validation(dvg)
@@ -11092,6 +11149,10 @@ def folha_alt(wb):
     ws.add_data_validation(dvr)
     dvr.add(f"E{rr_}")
     ws.merge_cells(f"E{rr_}:F{rr_}")
+    dvb = DV_(type="list", formula1='"' + ",".join(ALT_BASES) + '"', allow_blank=False)   # V178
+    ws.add_data_validation(dvb)
+    dvb.add(f"E{4 + _alt_i('base')}")
+    ws.merge_cells(f"E{4 + _alt_i('base')}:F{4 + _alt_i('base')}")
     dvm = DV_(type="list", formula1='"' + ",".join(ALT_METODOS) + '"', allow_blank=False)
     ws.add_data_validation(dvm)
     dvm.add(f"E{4 + _alt_i('met')}")
@@ -11108,9 +11169,10 @@ def folha_alt(wb):
         c.alignment, c.border = Alignment(horizontal="center", vertical="center", wrap_text=True), borda
     ws.cell(ALT_L0, 5).fill = PatternFill("solid", fgColor="375623")
     ws.row_dimensions[ALT_L0].height = 48
-    fms = ("0", "General", "@", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "0.00", "0%", "0.00", "0.00", "@",
-           "0.00", "0", "+0;-0;0", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "@")
-    lins = (g.get("linhas") or [])[:ALT_MAX]
+    fms = ("0", "General", "@", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "0.00", "0%", "0.00", "0.00", "@",
+           "0.00", "0", "+0;-0;0", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%",
+           "@", "0.####", "#,##0.00 €", "+#,##0.00 €;-#,##0.00 €;0.00 €", "+0.0%;-0.0%;0.0%", "@")
+    lins = (g.get("linhas") or [])[:ALT_MAX] if g.get("v") == ALT_V else []   # V177: colunas mudaram: recalcular
     for i in range(ALT_MAX):                           # V172: formatos em todas as linhas (o ▶ CALCULAR só escreve valores)
         lin = lins[i] if i < len(lins) else []
         for j in range(len(ALT_CAB)):
@@ -11130,8 +11192,15 @@ def folha_alt(wb):
         start_type="min", start_color="F8696B",
         mid_type="formula", mid_value=f"(MIN({rng})+$E${4 + _alt_i('verde')})/2", mid_color="FFEB84",
         end_type="formula", end_value=f"$E${4 + _alt_i('verde')}", end_color="63BE7B"))
-    for col, w in zip("ABCDEFGHIJKLMNOPQRS", (2, 6, 30, 11, 13, 11, 11, 9, 10, 9, 10, 22, 9, 9, 10, 11, 11, 11, 30)):
+    for col, w in zip("ABCDEFGHIJKLMNOPQRSTUVWXY", (2, 6, 62, 11, 13, 11, 11, 12, 9, 10, 9, 10, 22, 9, 9, 10, 11, 11, 11,
+                                                    7, 9, 12, 12, 9, 30)):
         ws.column_dimensions[col].width = w
+    from openpyxl.formatting.rule import FormulaRule
+    c_det = get_column_letter(2 + ALT_IDET_F)            # V177: os meus títulos a amarelo; nomes sempre a preto
+    r1, r2 = ALT_L0 + 1, ALT_L0 + ALT_MAX
+    ws.conditional_formatting.add(f"C{r1}:C{r2}", FormulaRule(formula=[f"LEN($C{r1})>=0"], font=Font(color="000000")))
+    ws.conditional_formatting.add(f"B{r1}:C{r2} {c_det}{r1}:{get_column_letter(2 + ALT_IDET_F + 4)}{r2}", FormulaRule(
+        formula=[f'LEN(${c_det}{r1})>0'], fill=PatternFill("solid", bgColor="FFE699"), font=Font(bold=True, color="000000")))
     from openpyxl.chart import BarChart, Reference           # V173: gráfico de barras da nota (40 primeiros)
     bc = BarChart()
     bc.type, bc.style = "bar", 10
@@ -11147,7 +11216,7 @@ def folha_alt(wb):
     bc.x_axis.tickLblPos = bc.y_axis.tickLblPos = "low"
     bc.gapWidth = 40
     bc.width, bc.height = 17, 24
-    ws.add_chart(bc, "U3")
+    ws.add_chart(bc, "AA3")
 
 
 def calcular_alt():
@@ -11179,11 +11248,15 @@ def calcular_alt():
             v_ = _num_ou(lin[0])
             p[k] = v_ if v_ is not None and v_ > 0 else None
             continue
+        if k == "base":
+            v_ = txt(lin[0]).strip().lower()
+            p[k] = ALT_BASES[1] if v_.startswith("curva") else ALT_BASES[0]
+            continue
         if k == "met":
             v_ = txt(lin[0]).strip()
             p[k] = next((m_ for m_ in ALT_METODOS if m_.lower() == v_.lower()), ALT_METODOS[0])
             continue
-        if k == "vol_pond":
+        if k in ("vol_pond", "det1"):
             p[k] = "x" if txt(lin[0]).strip().lower() == "x" else ""
             continue
         v_ = _num_ou(lin[0])
@@ -11245,6 +11318,13 @@ def calcular_alt():
             if c_ in eur.columns and eur[c_].dropna().size > 60:
                 pond_ref = _alt_medidas(eur[c_][eur[c_].index <= fim], inicio, p["meia"])[1]
                 break
+    curvas_ = {}
+    if pond_ref is not None and p.get("base") == ALT_BASES[1]:   # V178: referência na mesma base
+        t_r = txt(d_ref.get("ticker")).upper()
+        for c_ in (hist.get(t_r, t_r), t_r):
+            if c_ in eur.columns and eur[c_].dropna().size > 60:
+                pond_ref = _alt_curva(eur[c_][eur[c_].index <= fim], inicio, p["passo"], p["tmin"], p["meia"])
+                break
     nt_painel = {}
     for d in acoes:
         v_ = d.get("nota_geral") if isinstance(d.get("nota_geral"), (int, float)) else d.get("nota")
@@ -11275,7 +11355,14 @@ def calcular_alt():
             real_a = (1 + real_t) ** (1 / anos_r) - 1 if anos_r >= 0.25 else None
         s_ = s[s.index >= inicio].dropna()                 # V172: cotações suspeitas e histórico curto ficam sem nota
         r_ = s_ / s_.shift(1)
-        saltos = int(((r_ >= 1 + EVO_SALTO) | (r_ <= 1 / (1 + EVO_SALTO))).sum())
+        salto_ = ((r_ >= 1 + EVO_SALTO) | (r_ <= 1 / (1 + EVO_SALTO))).to_numpy()
+        v_s = s_.to_numpy(dtype=float)                 # V177: só conta o salto que volta atrás em poucos dias (erro de
+        saltos = 0                                     # cotação); uma queda verdadeira (ex.: Soitec −30%) não conta
+        for i_ in [i for i in range(1, len(v_s)) if salto_[i]]:
+            if any(abs(v_s[j] / v_s[i_ - 1] - 1) <= 0.15 for j in range(i_ + 1, min(len(v_s), i_ + 6))):
+                saltos += 1
+        if int(salto_.sum()) >= 8:
+            saltos = max(saltos, 2)
         igual = (s_.diff() == 0).astype(int)
         parado = int(igual.groupby((igual == 0).cumsum()).sum().max() or 0) if len(igual) else 0
         anos_h = (s_.index[-1] - s_.index[0]).days / 365.25 if len(s_) > 1 else 0
@@ -11288,6 +11375,11 @@ def calcular_alt():
                            motivo + ": sem nota"])
             continue
         simples, pond, vol, d0, vol_p = _alt_medidas(s, inicio, p["meia"])
+        curva_ = _alt_curva(s, inicio, p["passo"], p["tmin"], p["meia"])   # V178
+        curvas_[t] = curva_
+        pond_m = pond
+        if p.get("base") == ALT_BASES[1]:
+            pond = curva_
         if p.get("vol_pond") == "x" and vol_p:
             vol = vol_p
         if d0 is not None and d0 > inicio + pd.Timedelta(days=60):
@@ -11341,25 +11433,40 @@ def calcular_alt():
         nota = None
         if pond is not None and f_vol:
             f = f_pe * f_vol
-            ng_ = nt_painel.get(t)                     # V175: peso opcional da nota global do painel
+            q_, s_n = d.get("qual"), d.get("saude_n")   # V177: qualidade e saúde (não repetem preço nem tendência)
+            if isinstance(q_, (int, float)) and isinstance(s_n, (int, float)) and q_ > 0 and s_n > 0:
+                ng_, qual_txt = (q_ + s_n) / 2, "qualidade e saúde"
+            else:
+                ng_, qual_txt = nt_painel.get(t), "nota do painel"
             if p.get("k") and isinstance(ng_, (int, float)) and ng_ > 0 and dref is None:
                 f = f / (ng_ / 3.0) ** (1 / p["k"])
-                obs.append(f"nota do painel {ng_:.2f}")
+                obs.append(f"{qual_txt} {ng_:.2f}")
             nota = pond / f if pond >= 0 else pond * f
-        linhas.append([None, txt(d.get("nome")) or t, t, nota, pond, simples, pe_u, vol, f_pe, f_vol,
+        linhas.append([None, txt(d.get("nome")) or t, t, nota, pond_m, simples, pe_u, vol, f_pe, f_vol,
                        txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, real_t, real_a,
                        (pond - pond_ref) if pond is not None and pond_ref is not None else None,
                        " · ".join(obs) or None])
+    por_t_ = {txt(d.get("ticker")).upper(): d for d in acoes}   # V177: os meus títulos (da folha Ações / ETFs)
+    num_ = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    for l in linhas:
+        d_ = por_t_.get(l[2]) or {}
+        q_ = num_(d_.get("qtd")) or qtd_detida(d_.get("det"))
+        tem_ = e_detido(d_.get("det")) or bool(q_)
+        l[ALT_IDET:ALT_IDET] = ["x" if tem_ else None, q_, num_(d_.get("valor_eur")), num_(d_.get("lp_eur")),
+                                num_(d_.get("lp_pct"))]
     linhas.sort(key=lambda l: (l[3] is None, -(l[3] or 0)))
     for k, l in enumerate(linhas, 1):
         if l[3] is not None:
             l[0] = k
             if l[12] is not None:
                 l[13] = l[12] - k                          # > 0: sobe aqui em relação ao painel
+    if p.get("det1") == "x":                           # V177: detidos primeiro (a ordem continua a ser a da nota)
+        linhas.sort(key=lambda l: l[ALT_IDET] != "x")
     rnd = lambda v: round(v, 5) if isinstance(v, float) else v
     linhas = [[rnd(v) for v in l] for l in linhas]
     gerado = (f"Calculado em {datetime.now():%d/%m/%Y %H:%M} · {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} · {len(acoes)} {p['grupo']} "
-              f"· preço: {p.get('met')} · m = {p['m']:g}, n = {(format(p['n'], 'g') if p.get('n') else 'sem volatilidade')}, meia-vida {p['meia']:g} anos · volatilidade "
+              f"· base: {p.get('base')}" + (f" (de {p['passo']:g} em {p['passo']:g} dias, sem os últimos {p['tmin']:g} meses)"
+                                            if p.get('base') == ALT_BASES[1] else "") + f" · preço: {p.get('met')} · m = {p['m']:g}, n = {(format(p['n'], 'g') if p.get('n') else 'sem volatilidade')}, meia-vida {p['meia']:g} anos · volatilidade "
               + ("ponderada pelo tempo" if p.get("vol_pond") == "x" else "simples"))
     par_ = [(l[0], l[12]) for l in linhas if l[0] is not None and l[12] is not None]   # V175: parecença com o painel
     if len(par_) >= 6:
@@ -11376,6 +11483,9 @@ def calcular_alt():
             cima, baixo = float(dfc["r"].iloc[:k3].median()), float(dfc["r"].iloc[-k3:].median())
             gerado += (f" · ANÁLISE EM {fim:%d/%m/%Y}: desde então, o terço de cima variou {cima:+.0%} e o de baixo "
                        f"{baixo:+.0%} (medianas); correlação nota × real {rho:+.2f}")
+    for l in linhas:                                   # V178: coluna da curva (a seguir à simples)
+        c_ = curvas_.get(l[2])
+        l.insert(6, round(c_, 5) if isinstance(c_, float) else None)
     _gravar_json(FICH_ALT, {"v": ALT_V, "p": {**p, "data": dref.strftime("%Y-%m-%d") if dref is not None else None},
                             "linhas": linhas[:ALT_MAX], "gerado": gerado})
     grade = [[_alt_link(v_, ALT_L0 + 1 + i) if j == 1 else v_ for j, v_ in enumerate(l)] + [None] * (len(ALT_CAB) - len(l))
@@ -11387,8 +11497,8 @@ def calcular_alt():
            guardar=True)
     for l in linhas[:15]:
         if l[3] is not None:
-            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota alt. {l[3]:+6.1%} · ponderada {l[4]:+6.1%} · fator preço {l[8]:4.2f} · "
-                  f"vol {l[7]:4.0%} · painel: {l[11] if l[11] is not None else '—'} (posição {l[12] or '—'})")
+            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota alt. {l[3]:+6.1%} · fator preço {l[9]:4.2f} · "
+                  f"vol {l[8]:4.0%} · painel: {l[12] if l[12] is not None else '—'} (posição {l[13] or '—'})")
     print("CFAltern: pronto.")
 
 
