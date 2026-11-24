@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V171", "24/11/2026"
+VERSAO, DATA_VERSAO = "V172", "24/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1176,7 +1176,7 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
     try:
         folha_alt(wb)
     except Exception as e:
-        print("   aviso: folha Ações-CFAlt não criada:", e)
+        print("   aviso: folha CFAltern não criada:", e)
     try:
         folha_comparar(wb)
     except Exception as e:
@@ -7709,7 +7709,7 @@ def main():
         Excel(FICHEIRO).ops([{"op": "fechar_quadro"}], guardar=True)
     elif "://historico" in arg:              # folha Histórico: ▶ GERAR HISTÓRICO
         calcular_historico()
-    elif "://cfalt" in arg:                  # folha Ações-CFAlt: ▶ CALCULAR
+    elif "://cfalt" in arg:                  # folha CFAltern: ▶ CALCULAR
         calcular_alt()
     elif "://comprent" in arg:               # folha Comp Rent Títulos: ▶ CALCULAR
         calcular_comp_rent()
@@ -10954,13 +10954,14 @@ def calcular_comp_rent():
 
 
 # ======================================================= Ações-CFAlt (V171): classificação alternativa das ações
-FOLHA_ALT = "Ações-CFAlt"
+FOLHA_ALT = "CFAltern"           # V172: era «Ações-CFAlt»; agora ações ou ETFs
 FICH_ALT = os.path.join(PASTA, BASE + "_cfalt.json")
-ALT_L0 = 15                        # cabeçalho da tabela (dados a partir da 16)
+ALT_L0 = 16                        # cabeçalho da tabela (dados a partir da 17)
 ALT_MAX = 300
-ALT_PADRAO = {"anos": 10.0, "meia": 3.0, "m": 3.0, "n": 2.0, "pe_ref": 20.0, "vol_ref": 0.25, "pe_max": 100.0,
-              "vol_pond": "x", "verde": 0.10}
-ALT_PAR = (("anos", "Extensão da análise (anos)", "0.00"),
+ALT_PADRAO = {"grupo": "Ações", "anos": 10.0, "meia": 3.0, "m": 3.0, "n": 2.0, "pe_ref": 20.0, "vol_ref": 0.25, "pe_max": 100.0,
+              "vol_pond": "x", "hmin": 3.0, "verde": 0.10}
+ALT_PAR = (("grupo", "Calcular para (Ações / ETFs)", "@"),
+           ("anos", "Extensão da análise (anos)", "0.00"),
            ("meia", "Meia-vida da rentabilidade ponderada (anos)", "0.00"),
            ("m", "Raiz do fator P/E: (P/E ÷ referência)^(1/m) · m =", "0.0"),
            ("n", "Raiz do fator volatilidade: (vol ÷ referência)^(1/n) · n =", "0.0"),
@@ -10968,6 +10969,7 @@ ALT_PAR = (("anos", "Extensão da análise (anos)", "0.00"),
            ("vol_ref", "Volatilidade de referência (fator = 1)", "0%"),
            ("pe_max", "P/E máximo (sem lucros ou acima disto: conta este)", "0"),
            ("vol_pond", "Volatilidade ponderada pelo tempo, com a mesma meia-vida (x = sim)", "@"),
+           ("hmin", "Histórico mínimo (anos; menos do que isto fica sem nota)", "0.0"),
            ("verde", "Verde a partir de (nota alternativa, %/ano)", "0.0%"))
 ALT_CAB = ("Ordem", "Empresa", "Ticker", "Nota alternativa (rent. ajustada, %/ano)", "Rent. anual ponderada",
            "Rent. anual simples", "P/E usado", "Volatilidade anual (usada)", "Fator P/E", "Fator volatilidade",
@@ -11015,7 +11017,7 @@ def folha_alt(wb):
     amarelo = PatternFill("solid", fgColor="FFF2CC")
     fina = Side(style="thin", color="BFBFBF")
     borda = Border(left=fina, right=fina, top=fina, bottom=fina)
-    ws["A1"] = "Ações: classificação alternativa (rentabilidade ponderada pelo tempo, ajustada ao preço e ao risco)"
+    ws["A1"] = (f"{p['grupo']}: classificação alternativa (rentabilidade ponderada pelo tempo, ajustada ao preço e ao risco)")
     ws["A1"].font = Font(size=14, bold=True)
     ws["B2"] = ("Nota alternativa = rentabilidade anual ponderada ÷ (P/E ÷ P/E de referência)^(1/m) ÷ (volatilidade ÷ "
                 "volatilidade de referência)^(1/n). A rentabilidade ponderada é a da folha Comp Rent Títulos: rentabilidades "
@@ -11025,7 +11027,9 @@ def folha_alt(wb):
                 "divide por 1,41. A volatilidade pode ser ponderada pelo tempo (mesma meia-vida: o risco recente pesa mais). O P/E é o "
                 "atual (é o que se paga hoje). Se a rentabilidade for negativa, os fatores multiplicam em vez de dividir (caro e "
                 "arriscado a perder fica pior, não melhor). Sem lucros (P/E negativo / vazio) ou P/E acima do máximo: conta "
-                "o máximo. Ordem: da nota maior para a menor. Cor: vermelho no mínimo, verde a partir do valor pedido. "
+                "o máximo. Ficam sem nota (no fim, com o motivo): histórico mais curto do que o mínimo pedido e cotações suspeitas "
+                "(2 ou mais dias com saltos de ±40%, ou 20 dias seguidos paradas: erros do Yahoo ou bolsas pouco líquidas). "
+                "ETFs: P/E do Yahoo quando existe; sem ele o fator P/E é 1. Ordem: da nota maior para a menor. Cor: vermelho no mínimo, verde a partir do valor pedido. "
                 "Compara com a decisão, a nota e a posição do painel. É baseada no passado: não garante o futuro.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
@@ -11037,6 +11041,10 @@ def folha_alt(wb):
         c = ws.cell(r, 5, p[k])
         c.fill, c.border, c.number_format = amarelo, borda, fm
         c.font, c.alignment = Font(bold=True), Alignment(horizontal="center")
+    from openpyxl.worksheet.datavalidation import DataValidation as DV_
+    dvg = DV_(type="list", formula1='"Ações,ETFs"', allow_blank=False)
+    ws.add_data_validation(dvg)
+    dvg.add(f"E{4 + _alt_i('grupo')}")
     botao(ws, "G4", "▶ CALCULAR", "painelacoes://cfalt", "1F4E79", "16365C", 12)
     ws.merge_cells("G4:H5")
     ws["G7"] = g.get("gerado") or "Ainda não calculado (demora alguns minutos: cotações de todas as ações)."
@@ -11049,10 +11057,14 @@ def folha_alt(wb):
     ws.row_dimensions[ALT_L0].height = 48
     fms = ("0", "@", "@", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "+0.0%;-0.0%;0.0%", "0.0", "0%", "0.00", "0.00", "@",
            "0.00", "0", "+0;-0;0", "@")
-    for i, lin in enumerate((g.get("linhas") or [])[:ALT_MAX]):
-        for j, v_ in enumerate(lin):
-            c = ws.cell(ALT_L0 + 1 + i, 2 + j, v_)
-            c.number_format, c.border = fms[j], borda
+    lins = (g.get("linhas") or [])[:ALT_MAX]
+    for i in range(ALT_MAX):                           # V172: formatos em todas as linhas (o ▶ CALCULAR só escreve valores)
+        lin = lins[i] if i < len(lins) else []
+        for j in range(len(ALT_CAB)):
+            c = ws.cell(ALT_L0 + 1 + i, 2 + j, lin[j] if j < len(lin) else None)
+            c.number_format = fms[j]
+            if i < 200:
+                c.border = borda
             c.alignment = Alignment(horizontal="left" if j in (1, 10, 14) else "center")
     ws.freeze_panes = ws.cell(ALT_L0 + 1, 4)
     ws.auto_filter.ref = f"B{ALT_L0}:{get_column_letter(1 + len(ALT_CAB))}{ALT_L0 + ALT_MAX}"
@@ -11066,15 +11078,18 @@ def folha_alt(wb):
 
 
 def calcular_alt():
-    """▶ CALCULAR (folha Ações-CFAlt)."""
+    """▶ CALCULAR (folha CFAltern)."""
     import pandas as pd
     from datetime import date as date_, timedelta
     ex = Excel(FICHEIRO)
     ultima = get_column_letter(len(COLS))
-    rr = ex.ops([{"op": "ler", "folha": 1, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"},
-                 {"op": "ler", "folha": FOLHA_ALT, "rng": f"E4:E{4 + len(ALT_PAR) - 1}"}])
-    p = {}
+    rp = ex.ops([{"op": "ler", "folha": FOLHA_ALT, "rng": f"E4:E{4 + len(ALT_PAR) - 1}"}])[0]
+    etf_ = txt(rp[_alt_i("grupo")][0]).strip().upper().startswith("ETF")
+    rr = [ex.ops([{"op": "ler", "folha": 2 if etf_ else 1, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"}])[0], rp]
+    p = {"grupo": "ETFs" if etf_ else "Ações"}
     for (k, _, _), lin in zip(ALT_PAR, rr[1]):
+        if k == "grupo":
+            continue
         if k == "vol_pond":
             p[k] = "x" if txt(lin[0]).strip().lower() == "x" else ""
             continue
@@ -11085,13 +11100,13 @@ def calcular_alt():
     if p["verde"] > 1.5:
         p["verde"] /= 100
     acoes, vistos = [], set()
-    for d in linhas_por_cabecalho(rr[0], 1):
+    for d in linhas_por_cabecalho(rr[0], 2 if etf_ else 1):
         t = txt(d.get("ticker")).upper()
-        if t and txt(d.get("tipo")) != "ETF" and t not in vistos:
+        if t and (txt(d.get("tipo")) == "ETF") == etf_ and t not in vistos:
             vistos.add(t)
             acoes.append(d)
     if not acoes:
-        print("Ações-CFAlt: a folha Ações não tem títulos.")
+        print(f"CFAltern: a folha {p['grupo']} não tem títulos.")
         sys.exit(1)
     yf = _yf()
     hist, moedas = {}, {}
@@ -11109,7 +11124,7 @@ def calcular_alt():
                 pass
     hoje = date_.today()
     ini = hoje - timedelta(days=int(p["anos"] * 365.25) + 10)
-    print(f"Ações-CFAlt: cotações de {len(acoes)} ações ({p['anos']:.2f} anos) ...")
+    print(f"CFAltern: cotações de {len(acoes)} {p['grupo']} ({p['anos']:.2f} anos) ...")
     eur, _ = _sim_cotacoes_eur(sorted(set(hist.values()) | set(hist)), moedas, ini, hoje)
     fim = eur.dropna(how="all").index[-1]
     inicio = pd.Timestamp(fim) - pd.Timedelta(days=int(p["anos"] * 365.25))
@@ -11132,13 +11147,29 @@ def calcular_alt():
             linhas.append([None, txt(d.get("nome")) or t, t, None, None, None, None, None, None, None,
                            txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, "sem cotações"])
             continue
+        s_ = s[s.index >= inicio].dropna()                 # V172: cotações suspeitas e histórico curto ficam sem nota
+        r_ = s_ / s_.shift(1)
+        saltos = int(((r_ >= 1 + EVO_SALTO) | (r_ <= 1 / (1 + EVO_SALTO))).sum())
+        igual = (s_.diff() == 0).astype(int)
+        parado = int(igual.groupby((igual == 0).cumsum()).sum().max() or 0) if len(igual) else 0
+        anos_h = (s_.index[-1] - s_.index[0]).days / 365.25 if len(s_) > 1 else 0
+        motivo = (f"cotações suspeitas ({saltos} saltos de ±{EVO_SALTO:.0%} num dia)" if saltos >= 2 else
+                  f"cotações suspeitas ({parado} dias seguidos paradas)" if parado >= EVO_PARADO else
+                  f"histórico curto ({anos_h:.1f} anos)" if anos_h < min(p["hmin"], p["anos"] - 0.05) else None)
+        if motivo:
+            linhas.append([None, txt(d.get("nome")) or t, t, None, None, None, None, None, None, None,
+                           txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, motivo + ": sem nota"])
+            continue
         simples, pond, vol, d0, vol_p = _alt_medidas(s, inicio, p["meia"])
         if p.get("vol_pond") == "x" and vol_p:
             vol = vol_p
         if d0 is not None and d0 > inicio + pd.Timedelta(days=60):
             obs.append(f"só desde {d0:%m/%Y}")
         pe = d.get("pe") if isinstance(d.get("pe"), (int, float)) else None
-        if pe is None or pe <= 0:
+        if (pe is None or pe <= 0) and etf_:          # ETF sem P/E: o fator do preço não conta
+            pe_u = p["pe_ref"]
+            obs.append("sem P/E: fator 1")
+        elif pe is None or pe <= 0:
             pe_u = p["pe_max"]
             obs.append("sem lucros: P/E máximo")
         else:
@@ -11161,7 +11192,7 @@ def calcular_alt():
                 l[13] = l[12] - k                          # > 0: sobe aqui em relação ao painel
     rnd = lambda v: round(v, 5) if isinstance(v, float) else v
     linhas = [[rnd(v) for v in l] for l in linhas]
-    gerado = (f"Calculado em {datetime.now():%d/%m/%Y %H:%M} · {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} · {len(acoes)} ações "
+    gerado = (f"Calculado em {datetime.now():%d/%m/%Y %H:%M} · {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} · {len(acoes)} {p['grupo']} "
               f"· m = {p['m']:g}, n = {p['n']:g}, meia-vida {p['meia']:g} anos · volatilidade "
               + ("ponderada pelo tempo" if p.get("vol_pond") == "x" else "simples"))
     _gravar_json(FICH_ALT, {"p": p, "linhas": linhas[:ALT_MAX], "gerado": gerado})
@@ -11175,7 +11206,7 @@ def calcular_alt():
         if l[3] is not None:
             print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota alt. {l[3]:+6.1%} · ponderada {l[4]:+6.1%} · P/E {l[6]:5.1f} · "
                   f"vol {l[7]:4.0%} · painel: {l[11] if l[11] is not None else '—'} (posição {l[12] or '—'})")
-    print("Ações-CFAlt: pronto.")
+    print("CFAltern: pronto.")
 
 
 _SIM_LOCAL = {}
