@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V181", "24/11/2026"
+VERSAO, DATA_VERSAO = "V183", "24/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -11028,7 +11028,7 @@ ALT_PAR = (("met", "Medida do preço", "@"), ("base", "Base da nota", "@"),
            ("m", "Raiz do fator preço (m)", "0.0"), ("n", "Raiz do fator volatilidade (n)", "0.0"),
            ("pe_ref", "P/E de referência (fator 1)", "0.0"), ("pe_max", "P/E máximo (sem lucros: este)", "0"),
            ("pe_min", "P/E mínimo (abaixo disto: conta este)", "0.0"),
-           ("vol_ref", "Volatilidade de referência", "0%"), ("vol_pond", "Volatilidade ponderada (x)", "@"),
+           ("vol_ref", "Volatilidade de referência (abaixo: sem penalização)", "0%"), ("vol_pond", "Volatilidade ponderada (x)", "@"),
            ("hmin", "Histórico mínimo (anos)", "0.0"), ("k", "Peso qualidade + saúde (k)", "0.0"),
            ("det1", "Os meus títulos primeiro (x)", "@"), ("verde", "Verde a partir de (%/ano)", "0.0%"))
 # 3 blocos de 7 parâmetros, lado a lado nas linhas 3-9: (1.ª coluna do rótulo, coluna do valor)
@@ -11103,6 +11103,7 @@ def _alt_curva(s, inicio, passo, tmin, meia):
     """V178: rentabilidade anual de comprar de «passo» em «passo» dias de bolsa e guardar até ao fim da série (como a
     curva da Comp Rent Títulos), sem as compras dos últimos «tmin» meses; média com mais peso às compras recentes
     (meia-vida). None se não houver pontos."""
+    import math
     import pandas as pd
     s = s[s.index >= inicio].dropna()
     if len(s) < 30:
@@ -11116,10 +11117,10 @@ def _alt_curva(s, inicio, passo, tmin, meia):
         anos_ = (fim_ - d_).days / 365.25
         if anos_ <= 0 or v_ <= 0:
             continue
-        w = 0.5 ** (anos_ / meia)
-        soma += w * ((pf / float(v_)) ** (1 / anos_) - 1)
-        pesos += w
-    return soma / pesos if pesos else None
+        w = 0.5 ** (anos_ / meia)               # V182: ganho total ÷ tempo total (com pesos), e não a média das
+        soma += w * math.log(pf / float(v_))    # rentabilidades por ano de cada compra: uma compra de há 7 meses que
+        pesos += w * anos_                      # subiu 60% já não vale «+120%/ano» com peso máximo
+    return math.exp(soma / pesos) - 1 if pesos else None
 
 
 def _alt_base_vals(d, r):
@@ -11342,10 +11343,11 @@ def folha_alt(wb, etf, dados, estado=None, atualizado=None):
         "[× peso da qualidade e saúde]. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL (rentabilidades "
         "mensais da extensão escolhida, cada mês com metade do peso do mês «meia-vida» anos mais recente; a mesma da "
         "Comp Rent Títulos) ou CURVA DA COMP RENT (o que se ganhava por ano comprando de X em X dias de bolsa e guardando até "
-        "hoje, sem as compras dos últimos meses pedidos; mais peso às compras recentes). PREÇO: P/E (fator = (P/E ÷ P/E de "
+        "hoje, sem as compras dos últimos meses pedidos: soma dos ganhos ÷ soma dos anos guardados, com mais peso às compras "
+        "recentes; assim uma compra recente que subiu muito não dá «+100%/ano»). PREÇO: P/E (fator = (P/E ÷ P/E de "
         "referência)^(1/m); sem lucros ou acima do máximo conta o máximo; abaixo do mínimo conta o mínimo (com 8 e m = 3 a nota sobe no máximo 36%); ETFs sem P/E: fator 1), NÍVEL DO PAINEL (fator = "
         "(3 ÷ nível)^(1/m)) ou DISTÂNCIA À TENDÊNCIA (preço ÷ reta de crescimento do período, ^(1/m)); por omissão P/E, sem "
-        "ele o nível e sem ele a tendência. VOLATILIDADE (só com n preenchido): (vol ÷ referência)^(1/n). PESO QUALIDADE + "
+        "ele o nível e sem ele a tendência. VOLATILIDADE (só com n preenchido): (vol ÷ referência)^(1/n), nunca menos de 1 (só penaliza quem oscila mais do que a referência). PESO QUALIDADE + "
         "SAÚDE (só com k): × (média da qualidade e da saúde ÷ 3)^(1/k); nos ETFs, a nota global. Rentabilidade negativa: os "
         "fatores multiplicam em vez de dividir. Sem nota (no fim, com o motivo): histórico mais curto do que o mínimo e "
         "cotações suspeitas (2 ou mais saltos de ±40% que voltam atrás em poucos dias, ou 20 dias seguidos paradas). "
@@ -11585,7 +11587,8 @@ def calcular_alt(etf_=False):
             f_pe = (pe_u / p["pe_ref"]) ** (1 / p["m"])
             if pe0 is not None and pe0 <= p["pe_max"]:
                 obs.append(f"P/E {pe0:.1f}")
-        f_vol = 1.0 if not p.get("n") else (vol / p["vol_ref"]) ** (1 / p["n"]) if vol else None
+        f_vol = 1.0 if not p.get("n") else max(1.0, (vol / p["vol_ref"]) ** (1 / p["n"])) if vol else None
+        # V183: o fator volatilidade só penaliza (nunca < 1): menos oscilação do que a referência não dá prémio
         nota = None
         if pond is not None and f_vol:
             f = f_pe * f_vol
