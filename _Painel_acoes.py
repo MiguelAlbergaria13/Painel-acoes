@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V183", "24/11/2026"
+VERSAO, DATA_VERSAO = "V187", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -7755,6 +7755,8 @@ def main():
                     calcular_alt(etf_)
                 except SystemExit:
                     pass
+    elif "repor_detidos" in arg:             # V185: ↺ REPOR DETIDOS (de uma cópia)
+        repor_detidos()
     elif "posicao" in arg:                   # ▣ VER POSIÇÃO
         ver_posicao()
     elif "fechar_quadro" in arg:             # ✕ do quadro da carteira (versões anteriores)
@@ -11196,7 +11198,8 @@ def folha_alt(wb, etf, dados, estado=None, atualizado=None):
             ("AA3", "▶ ATUALIZAR TUDO", "atualizar/tudo/nova", "1F3B57", "0F2236"),
             ("AA4", "▶ ATUALIZAR " + ("ETFs" if etf else "AÇÕES"), f"atualizar/{g_}/nova", "00A050", "006E37"),
             ("AA5", "↻ PREÇOS (rápido)", "precos/nova", "BF8F00", "7F6000"),
-            ("AA7", "▣ VER POSIÇÃO", "posicao", "595959", "3A3A3A")):
+            ("AA7", "▣ VER POSIÇÃO", "posicao", "595959", "3A3A3A"),
+            ("AA9", "↺ REPOR DETIDOS (cópia)", "repor_detidos", "7030A0", "4B2070")):
         r_ = int(cel_[2:])
         ws.merge_cells(f"AA{r_}:AB{r_}")
         botao(ws, cel_, txt_, f"{PROTOCOLO}://{lk_}", c1_, c2_, 10)
@@ -11529,6 +11532,16 @@ def calcular_alt(etf_=False):
                            motivo + ": sem nota"])
             continue
         simples, pond, vol, d0, vol_p = _alt_medidas(s, inicio, p["meia"])
+        k_v = "val10" if anos_h >= 9.5 else "val5" if anos_h >= 4.5 else "val3"   # V184: confere com a folha base
+        vb = d.get(k_v)
+        if dref is None and isinstance(vb, (int, float)) and isinstance(simples, (int, float)):
+            vb = vb / 100 if abs(vb) > 3 else vb
+            if abs(simples - vb) > max(0.15, 0.5 * abs(vb)):
+                linhas.append([None, txt(d.get("nome")) or t, t, None, None, simples, None, None, None, None,
+                               txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, real_t, real_a, None,
+                               f"cotações de {hist.get(t, t)} não batem com a folha base ({simples:+.0%}/ano aqui, "
+                               f"{vb:+.0%}/ano lá): sem nota"])
+                continue
         curva_ = _alt_curva(s, inicio, p["passo"], p["tmin"], p["meia"])   # V178
         curvas_[t] = curva_
         pond_m = pond
@@ -11727,13 +11740,192 @@ def sincronizar_alt(ex=None):
             hh.append([limpa(n_[jh]) or " "])
         lh = get_column_letter(COL["corr"])
         sel_ = txt(rr[1][0][0]) or SELECOES[0]
-        ex.ops([{"op": "escrever", "folha": idx, "rng": f"A{L0 + 1}:D{L0 + len(ad)}", "valores": ad},
-                {"op": "escrever", "folha": idx, "rng": f"{lh}{L0 + 1}:{lh}{L0 + len(hh)}", "valores": hh},
-                {"op": "escrever", "folha": idx, "rng": C_SEL, "valores": [[sel_]]},
-                {"op": "escrever", "folha": idx, "rng": C_SEL_V, "valores": [[limpa(rr[1][0][-1])]]},
-                {"op": "escrever", "folha": idx, "rng": C_LPMIN, "valores": [[limpa(rr[2][0][0]) or LP_MIN]]}],
-               guardar=True)
-        print(f"{nome_f} -> {FOLHA_E2 if etf_ else FOLHA_A2}: colunas A-D e H e escolhas passadas ({mud} alterações).")
+        try:                                           # V184: cópia do que estava na folha base (para recuperar)
+            _gravar_json(FICH_SINC_ANTES.replace(".json", f"_{idx}.json"),
+                         {"quando": f"{datetime.now():%d/%m/%Y %H:%M}",
+                          "linhas": {txt(v[jt]).upper(): [v[0], v[1], v[2], v[3], v[jh]] for v in base if txt(v[jt])}})
+        except Exception:
+            pass
+        ops_ = []                                      # V184: só as linhas que mudaram, uma a uma (pelo ticker)
+        for i_, (v, a_, h_) in enumerate(zip(base, ad, hh)):
+            if [txt(limpa(x)) for x in v[:4]] != [txt(limpa(x)) for x in a_] or txt(limpa(v[jh])) != txt(limpa(h_[0])):
+                ops_.append({"op": "escrever", "folha": idx, "rng": f"A{L0 + 1 + i_}:D{L0 + 1 + i_}", "valores": [a_]})
+                ops_.append({"op": "escrever", "folha": idx, "rng": f"{lh}{L0 + 1 + i_}", "valores": [h_]})
+        n_lin = len(ops_) // 2
+        if n_lin > 10:                                 # V187: travão: tantas mudanças de uma vez cheiram a erro
+            print(f"   AVISO: {nome_f} -> {FOLHA_E2 if etf_ else FOLHA_A2}: {n_lin} títulos com detido / nº / preço de "
+                  f"compra / corretora diferentes. Não passei nada (para não estragar a folha base). Se as mudanças "
+                  f"são mesmo tuas, faz-as na folha {FOLHA_E2 if etf_ else FOLHA_A2}.")
+            ops_, n_lin = [], 0
+        ops_ += [{"op": "escrever", "folha": idx, "rng": C_SEL, "valores": [[sel_]]},
+                 {"op": "escrever", "folha": idx, "rng": C_SEL_V, "valores": [[limpa(rr[1][0][-1])]]},
+                 {"op": "escrever", "folha": idx, "rng": C_LPMIN, "valores": [[limpa(rr[2][0][0]) or LP_MIN]]}]
+        com_filtros(ex, ops_, [idx])                   # sem filtros enquanto escreve (o Excel só escreveria nas visíveis)
+        print(f"{nome_f} -> {FOLHA_E2 if etf_ else FOLHA_A2}: colunas A-D e H e escolhas passadas "
+              f"({n_lin} títulos alterados).")
+
+
+FICH_SINC_ANTES = os.path.join(PASTA, BASE + "_antes_sincronizar.json")
+
+
+def _ui_escolher(titulo, itens, texto):
+    """Escolha de um item: janela (sem consola) ou pergunta na consola. Índice (0...) ou None."""
+    if sys.stdout is not None and sys.stdin is not None:
+        print(texto)
+        for i_, t_ in enumerate(itens, 1):
+            print(f"  {i_:2d}. {t_}")
+        e_ = input("Número (Enter = sair): ").strip()
+        return int(e_) - 1 if e_.isdigit() and 1 <= int(e_) <= len(itens) else None
+    import tkinter as tk
+    from tkinter import ttk
+    r_ = {"i": None}
+    w = tk.Tk()
+    w.title(titulo)
+    w.geometry("720x460")
+    ttk.Label(w, text=texto, wraplength=690, padding=10, font=("Segoe UI", 10)).pack(fill="x")
+    lb = tk.Listbox(w, font=("Consolas", 10), activestyle="dotbox")
+    for t_ in itens:
+        lb.insert("end", t_)
+    lb.pack(fill="both", expand=True, padx=10)
+    fb = ttk.Frame(w, padding=10)
+    fb.pack(fill="x")
+
+    def ok_():
+        sel_ = lb.curselection()
+        if sel_:
+            r_["i"] = sel_[0]
+            w.destroy()
+    ttk.Button(fb, text="Cancelar", command=w.destroy).pack(side="right")
+    ttk.Button(fb, text="Usar esta cópia", command=ok_).pack(side="right", padx=8)
+    lb.bind("<Double-Button-1>", lambda e: ok_())
+    w.mainloop()
+    return r_["i"]
+
+
+def _ui_confirmar(titulo, texto, pergunta):
+    if sys.stdout is not None and sys.stdin is not None:
+        print(texto)
+        return input(pergunta + " (s/n): ").strip().lower() in ("s", "sim", "y")
+    import tkinter as tk
+    from tkinter import ttk
+    r_ = {"ok": False}
+    w = tk.Tk()
+    w.title(titulo)
+    w.geometry("980x560")
+    t_ = tk.Text(w, font=("Consolas", 9), wrap="none")
+    t_.insert("1.0", texto)
+    t_.configure(state="disabled")
+    t_.pack(fill="both", expand=True, padx=10, pady=10)
+    fb = ttk.Frame(w, padding=10)
+    fb.pack(fill="x")
+    ttk.Label(fb, text=pergunta, font=("Segoe UI", 10, "bold")).pack(side="left")
+
+    def sim_():
+        r_["ok"] = True
+        w.destroy()
+    ttk.Button(fb, text="Não", command=w.destroy).pack(side="right")
+    ttk.Button(fb, text="Sim, repor", command=sim_).pack(side="right", padx=8)
+    w.mainloop()
+    return r_["ok"]
+
+
+def _ui_aviso(titulo, texto):
+    if sys.stdout is not None:
+        print(texto)
+        return
+    import tkinter as tk
+    from tkinter import messagebox
+    w = tk.Tk()
+    w.withdraw()
+    messagebox.showinfo(titulo, texto, parent=w)
+    w.destroy()
+
+
+def repor_detidos():
+    """V185: repõe o x, o nº de ações, o preço de compra e a corretora nas folhas Ações(2) / ETFs(2) (e depois nas novas)
+    a partir de uma cópia: as definições enviadas para a app (config.enc no GitHub, com histórico) ou as cópias locais
+    (_detidos.json / _detidos_anterior.json). Mostra as diferenças e só escreve se confirmares."""
+    fontes = []                                       # (descrição, função que devolve o dicionário)
+    cfg = _config_github()
+    if cfg:
+        try:
+            cms = _api_github(cfg, "commits?path=config.enc&sha=main&per_page=40")
+            for c_ in cms:
+                quando = datetime.strptime(c_["commit"]["committer"]["date"], "%Y-%m-%dT%H:%M:%SZ")
+                quando += (datetime.now() - datetime.utcnow())
+                sha_ = c_["sha"]
+
+                def ler_(sha_=sha_):
+                    import base64
+                    j_ = _api_github(cfg, f"contents/config.enc?ref={sha_}")
+                    return json.loads(_decifrar(base64.b64decode(j_["content"]).decode("utf-8"), cfg["senha"]))
+                fontes.append((f"app (GitHub) · {quando:%d/%m/%Y %H:%M}", ler_, quando))
+        except Exception as e:
+            print("Não consegui ler o histórico do GitHub:", e)
+    for f_ in (FICH_DET.replace(".json", "_anterior.json"), FICH_DET):
+        if os.path.exists(f_):
+            q_ = datetime.fromtimestamp(os.path.getmtime(f_))
+            fontes.append((f"cópia local {os.path.basename(f_)} · {q_:%d/%m/%Y %H:%M}", lambda f_=f_: _ler_json(f_, {}), q_))
+    if not fontes:
+        _ui_aviso("Repor detidos", "Não encontrei nenhuma cópia dos detidos.")
+        return
+    i_esc = _ui_escolher("Painel de ações · Repor detidos", [d_ for d_, _, _ in fontes],
+                         "Cópias dos títulos detidos (x, nº de ações, preço de compra, corretora), mais recentes primeiro. "
+                         "Escolhe uma de ANTES do problema. A seguir vês as alterações e só se confirmares é que se escreve.")
+    if i_esc is None:
+        return
+    try:
+        j = fontes[i_esc][1]() or {}
+    except Exception as e:
+        _ui_aviso("Repor detidos", f"Não consegui ler essa cópia: {e}")
+        return
+    det = set(j.get("det") or [])
+    qtd, pc, co = j.get("qtd") or {}, j.get("pcompra") or {}, j.get("corr") or {}
+    ex = Excel(FICHEIRO)
+    ultima = get_column_letter(len(COLS))
+    jt, jn, jh = COL["ticker"] - 1, COL["nome"] - 1, COL["corr"] - 1
+    lh = get_column_letter(COL["corr"])
+    plano, mud = {}, []
+    for idx in (1, 2):
+        rr = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0 + 1}:{ultima}{L0 + MAX_LINHAS}"}])[0]
+        ops_ = []
+        for i_, v in enumerate(rr):
+            t_, n_ = txt(v[jt]).upper(), txt(v[jn])
+            m_ = re.search(r',"([^"]*)"\)\s*$', n_) if n_.startswith("=") else None
+            n_ = m_.group(1) if m_ else n_
+            if not t_:
+                continue
+            ks = [k for k in (t_, n_) if k]
+            g_ = lambda dd: next((dd[k] for k in ks if k in dd), None)
+            tem = any(k in det for k in ks) or bool(g_(qtd))
+            novo = ["x" if tem else " ", g_(qtd) if tem and g_(qtd) is not None else " ",
+                    g_(pc) if g_(pc) is not None else " ", g_(co) or " "]
+            atual = [v[1], v[2], v[3], v[jh]]
+            norm = lambda x: "" if x is None or txt(x).strip() == "" else (round(float(x), 6) if isinstance(x, (int, float)) else txt(x).strip().lower())
+            if [norm(x) for x in novo] != [norm(x) for x in atual]:
+                mud.append(f"   {n_[:28]:28} {t_:10} detido/nº/preço/corretora: "
+                           f"{[txt(x) for x in atual]} -> {[txt(x) for x in novo]}")
+                ops_.append({"op": "escrever", "folha": idx, "rng": f"B{L0 + 1 + i_}:D{L0 + 1 + i_}", "valores": [novo[:3]]})
+                ops_.append({"op": "escrever", "folha": idx, "rng": f"{lh}{L0 + 1 + i_}", "valores": [[novo[3]]]})
+        plano[idx] = ops_
+    if not mud:
+        _ui_aviso("Repor detidos", "Essa cópia é igual ao que está nas folhas: nada a mudar.")
+        return
+    if not _ui_confirmar("Painel de ações · Repor detidos", f"Cópia: {fontes[i_esc][0]}\nAlterações ({len(mud)} títulos):"
+                         f"  [atual] -> [reposto]\n\n" + "\n".join(m_.strip() for m_ in mud),
+                         "Repor estes valores?"):
+        _ui_aviso("Repor detidos", "Nada mudado.")
+        return
+    for idx in (1, 2):
+        if plano[idx]:
+            com_filtros(ex, plano[idx], [idx])
+    for etf_ in (False, True):
+        try:
+            refrescar_alt(etf_, ex)
+        except BaseException as e:
+            print(f"{ALT_FOLHA[etf_]}: não consegui copiar as colunas A-R ({e}).")
+    _ui_aviso("Repor detidos", "Títulos detidos repostos. Confere nas folhas; o próximo ▶ ATUALIZAR envia-os também "
+                               "para a app.")
 
 
 def esperar_excel(espera=90):
@@ -12677,7 +12869,7 @@ def acao_do_botao(arg):
     """(chave, descrição) da ação pedida, para a janela de progresso e para a estimativa do tempo."""
     a = arg.lower()
     for chave, padrao, txt_ in (
-            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comprent", "://comprent", "Comparar rentabilidade"), ("cfalt", "://cfalt", "Classificação alternativa"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
+            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comprent", "://comprent", "Comparar rentabilidade"), ("cfalt", "://cfalt", "Classificação alternativa"), ("repor", "repor_detidos", "Repor detidos"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
             ("ordenar", "ordenar", "Ordenar"),
             ("procurar", "procurar", "Procurar"), ("top", "://top", "Mais significativas"),
             ("base", "://base", "Lista base"), ("acrescentar", "acrescentar", "Acrescentar marcados"),
@@ -12872,7 +13064,7 @@ def usar_janela_progresso():
     if os.name != "nt" and "--janela-progresso" not in sys.argv:
         return False
     a = " ".join(sys.argv[1:]).lower()
-    if any(x in a for x in ("--servidor", "--janela", "--modelo", "posicao", "fechar_quadro")) and \
+    if any(x in a for x in ("--servidor", "--janela", "--modelo", "posicao", "fechar_quadro", "repor_detidos")) and \
             "--janela-progresso" not in sys.argv:
         return False
     return sys.stdout is None or "--janela-progresso" in sys.argv
