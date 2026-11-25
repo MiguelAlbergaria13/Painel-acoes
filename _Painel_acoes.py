@@ -355,48 +355,39 @@ _LARG = {"decisao": 18, "preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc":
 COLS = [(k, h, _LARG.get(k, w), f, g) for k, h, w, f, g in COLS]
 # V190: a nota por ganhos (antes nas folhas «nota alternativa») entra nas folhas Ações / ETFs, logo a seguir ao preço
 # noutra moeda (coluna R); a decisão passa para o lado dela
-G_COLS = [("g_n5", "Nota por ganhos (0-5, já ÷ fatores preço e volatilidade)", 7, "nota", "ganhos"),
-          ("g_nota", "Ganhos: rent. anual da base da nota (ponderada ou curva, %/ano)", 9, "pct", "ganhos")]
-G_COLS2 = [("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
-           ("g_curva", "Ganhos: rent. da curva, compras periódicas até hoje (%)", 8, "pct", "ganhos"),
+G_COLS = [("g_n5", "Nota por ganhos (0-5: rent. ÷ fatores; 5 = 25% da melhor + 75% da 2.ª)", 7, "nota", "ganhos"),
+          ("g_nota", "Ganhos: rent. anual comprando de X em X dias até hoje (%/ano, sem fatores)", 9, "pct", "ganhos")]
+G_COLS2 = [("g_ajust", "Ganhos: rent. ajustada pelos fatores (%/ano; dá a nota 0-5)", 9, "pct", "ganhos"),
+           ("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
            ("g_medida", "Ganhos: medida do preço (P/E, nível 1-5 ou × tendência)", 8, "num1", "ganhos"),
            ("g_vol", "Ganhos: volatilidade anual usada (%)", 8, "pct", "ganhos"),
            ("g_fpreco", "Ganhos: fator preço", 7, "num1", "ganhos"),
            ("g_fvol", "Ganhos: fator volatilidade", 7, "num1", "ganhos"),
-           ("g_ref", "Ganhos: ponderada − referência (%)", 8, "pct", "ganhos"),
+           ("g_ref", "Ganhos: rent. − referência (%)", 8, "pct", "ganhos"),
            ("g_real_t", "Ganhos: real desde a data de cálculo (total, %)", 8, "pct", "ganhos"),
            ("g_real_a", "Ganhos: real desde a data de cálculo (por ano, %)", 8, "pct", "ganhos"),
            ("g_obs", "Ganhos: observações", 30, "txt", "ganhos")]
-G_AJUDA_CAB = {                                         # V199: notas nos cabeçalhos das colunas de ganhos
+G_AJUDA_CAB = {                                         # V199/V200: notas nos cabeçalhos das colunas de ganhos
     "g_n5": "NOTA POR GANHOS (0-5):\n"
-            "1) nota base = 5 × rent. da base (coluna ao lado) ÷ (25% da melhor + 75% da 2.ª rent.), entre 0 e 5;\n"
-            "2) nota = nota base ÷ fator preço ÷ fator volatilidade [× (qualidade + saúde)/3 ^ (1/k)], outra vez "
-            "entre 0 e 5.\n"
-            "Rent. negativa = 0.",
-    "g_nota": "RENT. DA BASE DA NOTA (sem fatores), conforme a «Base da nota»:\n"
-              "PONDERADA: rentabilidade média por ano a partir dos rendimentos mensais, com mais peso nos meses "
-              "recentes. Meia-vida: o peso de cada mês cai para metade a cada «meia-vida» anos (3 = um mês de há 3 anos "
-              "pesa metade do mais recente). Vazia = todos os meses iguais (≈ rent. simples).\n"
-              "CURVA: igual à coluna «rent. da curva».\n"
-              "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.",
-    "g_pond": "RENT. ANUAL PONDERADA: rentabilidade média por ano a partir dos rendimentos mensais, com mais peso "
-              "nos meses recentes.\n"
-              "• Meia-vida: o peso de cada mês cai para metade a cada «meia-vida» anos (3 = um mês de há 3 anos pesa "
-              "metade do mais recente). Vazia = todos os meses iguais (≈ rent. simples).\n"
+            "1) rent. ajustada (coluna V) = rent. (coluna T) ÷ fator preço ÷ fator volatilidade [× (qualidade + saúde)/3 ^ (1/k)];\n"
+            "2) nota = 5 × rent. ajustada ÷ (25% da melhor + 75% da 2.ª rent. ajustada), entre 0 e 5.\n"
+            "A mais alta fica (quase sempre) com 5.",
+    "g_nota": "RENT. ANUAL COMPRANDO DE X EM X DIAS ATÉ HOJE (sem fatores): simula comprar de X em X dias de bolsa "
+              "(«Comprar de X em X dias») e guardar tudo até ao fim do período, como a curva da Comp Rent Títulos: "
+              "ganho total ÷ tempo total investido, em %/ano.\n"
+              "• Compras: tempo mín. = as compras dos últimos N meses não entram.\n"
+              "• Meia-vida: compras recentes pesam mais (vazia = todas iguais).\n"
               "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.\n"
-              "Mostra sempre esta medida, mesmo com Base da nota = curva.",
+              "Mesmo sem meia-vida, os meses recentes já contam mais (entram em quase todas as compras).",
+    "g_ajust": "RENT. AJUSTADA (auxiliar da nota): rent. da coluna T ÷ fator preço ÷ fator volatilidade "
+               "[× (qualidade + saúde)/3 ^ (1/k)]. Rent. negativa: os fatores multiplicam.\n"
+               "A nota 0-5 sai desta coluna: 5 × rent. ajustada ÷ (25% da melhor + 75% da 2.ª), entre 0 e 5.",
     "g_simples": "RENT. ANUAL SIMPLES: (preço final ÷ preço inicial)^(1/anos) − 1. Só olha para o primeiro e o "
-                 "último dia do período.\n"
+                 "último dia do período (uma única compra no início).\n"
                  "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.\n"
-                 "• A meia-vida não conta.",
-    "g_curva": "RENT. DA CURVA: simula comprar de X em X dias e guardar tudo até ao fim do período (como a curva da "
-               "Comp Rent Títulos): ganho total ÷ tempo total investido, em %/ano.\n"
-               "• Curva: de X em X dias = frequência das compras (muda pouco).\n"
-               "• Curva: tempo mín. = as compras dos últimos N meses não entram.\n"
-               "• Meia-vida: compras recentes pesam mais (vazia = todas iguais).\n"
-               "• Data de cálculo e Extensão definem o período.",
-    "g_ref": "PONDERADA − REFERÊNCIA: a medida da Base da nota (ponderada ou curva) deste título menos a mesma medida "
-             "do título de Referência, no mesmo período e com os mesmos pesos.\n"
+                 "• A meia-vida não conta. Só informativa.",
+    "g_ref": "RENT. − REFERÊNCIA: a rent. da coluna T deste título menos a do título de Referência, com as mesmas "
+             "compras e pesos.\n"
              "Positiva = bateu a referência. Vazia se não houver referência.\n"
              "Só informativa: não entra na nota nem na ordem.",
 }
@@ -669,7 +660,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V199", "25/11/2026"
+VERSAO, DATA_VERSAO = "V201", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1500,10 +1491,13 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
     ws.add_data_validation(dvr)
     dvr.add(C_REF)
     # linha 5: bolsas
-    for ini, fim, rot, m, cor, esc in (("A", "D", "◎ LISTA BASE", "base", "7F7F7F", "595959"),
-                                       ("E", "F", "€ PRIVILEGIAR EUR", "eur", "2E75B6", "1F4E79"),
-                                       ("G", "H", "$ PRIVILEGIAR EUA", "eua", "C55A11", "843C0C"),
-                                       ("I", "L", "⊕ TODAS AS BOLSAS", "todos", "548235", "375623")):
+    for ini, fim, rot, m, cor, esc in (("A", "C", "◎ LISTA BASE", "base", "7F7F7F", "595959"),   # V200: larguras
+                                       ("D", "E", "€ PRIVILEGIAR EUR", "eur", "2E75B6", "1F4E79"),  # mais iguais
+                                       ("F", "H", "$ PRIVILEGIAR EUA", "eua", "C55A11", "843C0C"),
+                                       ("I", "I", "⊕ TODAS AS BOLSAS", "todos", "548235", "375623")):
+        if ini == fim:
+            botao(ws, f"{ini}5", rot + ("  ✓" if m == modo_atual() else ""), f"{PROTOCOLO}://modo/{m}", cor, esc, 9)
+            continue
         ws.merge_cells(f"{ini}5:{fim}5")
         botao(ws, f"{ini}5", rot + ("  ✓" if m == modo_atual() else ""), f"{PROTOCOLO}://modo/{m}", cor, esc, 9)
     ws[C_PRECOS_EST] = "↻ PREÇOS: só os preços e as contas que dependem deles (segundos); ▶ ATUALIZAR: tudo (3 a 5 min)."
@@ -11125,15 +11119,15 @@ FICH_ALT_G = {False: os.path.join(PASTA, BASE + "_cfalt_acoes.json"), True: os.p
 ALT_V = 11                         # muda -> os parâmetros voltam aos aconselhados uma vez
 ALT_METODOS = ("P/E (sem ele: nível; sem ele: tendência)", "Nível do painel (sem ele: tendência)", "Nível do painel",
                "Distância à tendência", "P/E")
-ALT_BASES = ("Ponderada mensal", "Curva da Comp Rent (compras periódicas até hoje)")   # V178
+ALT_BASES = ("Ponderada mensal", "Compras periódicas até hoje")   # V178; V200: só a 2.ª (compras periódicas)
 ALT_PADRAO = {"data": None, "anos": 10.0, "meia": 3.0, "met": ALT_METODOS[0], "m": 4.0, "n": 3.0, "pe_ref": 20.0,
               "vol_ref": 0.25, "pe_max": 100.0, "pe_min": 8.0, "vol_pond": "x", "hmin": 3.0, "k": None, "ref": None,
-              "verde": 0.10, "base": ALT_BASES[0], "passo": 30.0, "tmin": 6.0, "peso0": 0.10}       # V190: m = 4, n = 3
+              "verde": 0.10, "base": ALT_BASES[1], "passo": 30.0, "tmin": 6.0, "peso0": 0.10}       # V190: m = 4, n = 3
 # V190: nas folhas Ações / ETFs, 2 tabelas de 9 parâmetros nas linhas 1-9 (rótulo, valor em 2 colunas)
-ALT_PAR = (("met", "Medida do preço", "@"), ("base", "Base da nota", "@"), ("ref", "Referência (pond. − ref.)", "@"),
+ALT_PAR = (("met", "Medida do preço", "@"), ("base", "Base da nota", "@"), ("ref", "Referência (rent. − ref.)", "@"),
            ("data", "Data de cálculo (vazio = hoje)", "dd/mm/yyyy"), ("anos", "Extensão (anos)", "0.00"),
-           ("meia", "Meia-vida (anos)", "0.00"), ("passo", "Curva: de X em X dias", "0"),
-           ("tmin", "Curva: tempo mín. (meses)", "0"), ("k", "Peso qual. + saúde (k)", "0.0"),
+           ("meia", "Meia-vida (anos)", "0.00"), ("passo", "Comprar de X em X dias de bolsa", "0"),
+           ("tmin", "Compras: tempo mín. (meses)", "0"), ("k", "Peso qual. + saúde (k)", "0.0"),
            ("m", "Raiz fator preço (m)", "0.0"), ("n", "Raiz f. volatilidade (n)", "0.0"),
            ("pe_ref", "P/E de referência", "0.0"), ("pe_max", "P/E máximo", "0"),
            ("pe_min", "P/E mínimo", "0.0"), ("vol_ref", "Volatilidade de ref.", "0%"),
@@ -11155,7 +11149,7 @@ def _alt_aconselhado(k):
     if k == "met":
         return " (acons.: P/E)"
     if k == "base":
-        return " (acons.: mensal)"
+        return " (fixa)"
     if v in (None, ""):
         return " (vazio = não)" if k in ("n", "k") else " (acons.: vazio)"
     if k == "meia":
@@ -11191,8 +11185,9 @@ def g_topo(wb, ws, etf):
     ws[G_C_GER].font = Font(size=9, color="7030A0")
     ws[G_C_GER].alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells("A8:O9")
-    ws["A8"] = ("NOTA POR GANHOS (0-5) = nota base (5 × rent. anual ÷ (25% da melhor + 75% da 2.ª), entre 0 e 5) ÷ fator do "
-                "preço [÷ fator da volatilidade] [× qualidade + saúde], outra vez entre 0 e 5. Rent. em euros, com dividendos. "
+    ws["A8"] = ("NOTA POR GANHOS (0-5): rent. anual comprando de X em X dias até hoje (euros, com dividendos) ÷ fator do "
+                "preço [÷ fator da volatilidade] [× qualidade + saúde]; nota = 5 × essa rent. ajustada ÷ (25% da melhor + 75% "
+                "da 2.ª), entre 0 e 5. "
                 "Calcula-se em cada ▶ ATUALIZAR. Explicação completa no fim da tabela.")
     ws["A8"].font = Font(italic=True, size=8, color="595959")
     ws["A8"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -11211,15 +11206,15 @@ def g_topo(wb, ws, etf):
     from openpyxl.comments import Comment
     rm_, _ = _alt_cel("meia")
     ws.cell(rm_, ALT_TAB[0][0]).comment = Comment(
-        "MEIA-VIDA: cada mês conta metade do mês que está «meia-vida» anos mais perto de hoje.\n"
-        "Em 10 anos de análise, o mês mais antigo pesa (face ao mais recente):\n"
+        "MEIA-VIDA: cada compra conta metade da compra feita «meia-vida» anos mais perto de hoje.\n"
+        "Em 10 anos de análise, a compra mais antiga pesa (face à mais recente):\n"
         "  1 ano: 0,1% (quase só os últimos 2-3 anos)\n"
         "  2 anos: 3%\n"
         "  3 anos (aconselhada): 10% (hoje pesa 10× o início)\n"
         "  5 anos: 25%\n"
         "  10 anos: 50%\n"
         "  20 anos: 71%\n"
-        "  vazia: 100% (todos os meses iguais = rentabilidade média simples)\n"
+        "  vazia: 100% (todas as compras iguais)\n"
         "Em 3 anos de análise, com meia-vida 3, o início pesa 50%.\n"
         "Mais curta: reage mais depressa a mudanças recentes (mas com mais ruído).\n"
         "Mais longa: mais estável (mas lenta a apanhar mudanças).", "Painel", width=420, height=230)
@@ -11247,7 +11242,7 @@ def g_topo(wb, ws, etf):
         ws.cell(rr_, cr_).value = next((n_ for n_, t_ in nomes_ if t_ == "SXR8.DE"), None) or \
             next((n_ for n_, t_ in nomes_ if "S&P 500" in n_), None)
     for k_, form_ in (("ref", f"=${let(cl_n)}$1:${let(cl_n)}${max(1, len(nomes_))}"),
-                      ("base", '"' + ",".join(ALT_BASES) + '"'), ("met", '"' + ",".join(ALT_METODOS) + '"')):
+                      ("base", '"' + ALT_BASES[1] + '"'), ("met", '"' + ",".join(ALT_METODOS) + '"')):
         dv_ = DV_(type="list", formula1=form_, allow_blank=k_ == "ref")
         ws.add_data_validation(dv_)
         r_, c_ = _alt_cel(k_)
@@ -11256,14 +11251,12 @@ def g_topo(wb, ws, etf):
     while txt(ws.cell(ult_ + 1, COL["ticker"]).value):
         ult_ += 1
     ws.cell(ult_ + 4, 1, (
-        "NOTA POR GANHOS (colunas S-T e V-AE; cores como as da nota global) = nota base ÷ fator do preço [÷ fator da "
-        "volatilidade] [× peso da qualidade e saúde], nunca abaixo de 0 nem acima de 5; nota base = 5 × rentabilidade ÷ "
-        "(25% da melhor + 75% da 2.ª rentabilidade), também entre 0 e 5. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL "
-        "(rentabilidades mensais da extensão escolhida; cada mês pesa metade do mês «meia-vida» anos mais recente; vazia = "
-        "todos iguais; ver a nota no parâmetro); a "
-        "mesma da Comp Rent Títulos) ou CURVA DA COMP RENT (o que se ganhava por ano comprando de X em X dias de bolsa e "
-        "guardando até hoje, sem as compras dos últimos meses pedidos: soma dos ganhos ÷ soma dos anos guardados, mais peso às "
-        "compras recentes). PREÇO: P/E (fator = (P/E ÷ P/E de referência)^(1/m); sem lucros ou acima do máximo conta o máximo; "
+        "NOTA POR GANHOS (colunas S-T e V-AE; cores como as da nota global) = 5 × rentabilidade ajustada ÷ (25% da melhor + "
+        "75% da 2.ª), nunca abaixo de 0 nem acima de 5; rentabilidade ajustada (coluna V) = rentabilidade ÷ fator do preço [÷ fator "
+        "da volatilidade] [× peso da qualidade e saúde]. RENTABILIDADE (euros, com dividendos, coluna T): o que se ganhava "
+        "por ano comprando de X em X dias de bolsa e guardando até hoje, como a curva da Comp Rent Títulos, sem as compras "
+        "dos últimos meses pedidos: soma dos ganhos ÷ soma dos anos guardados (cada compra pesa metade da compra «meia-vida» "
+        "anos mais recente; vazia = todas iguais). PREÇO: P/E (fator = (P/E ÷ P/E de referência)^(1/m); sem lucros ou acima do máximo conta o máximo; "
         "abaixo do mínimo conta o mínimo; ETFs sem P/E: o nível de preço, (3 ÷ nível)^(1/m), ou a distância à tendência). "
         "VOLATILIDADE (com n): (vol ÷ referência)^(1/n), nunca menos de 1 (só penaliza). QUALIDADE + SAÚDE (com k): × (média ÷ "
         "3)^(1/k); nos ETFs, a nota global. Rentabilidade negativa: os fatores multiplicam. Sem nota (com o motivo nas "
@@ -11366,7 +11359,7 @@ def g_ler_params(vals):
             v_ = _num_ou(v0)
             p[k] = v_ if v_ is not None and v_ > 0 else None
         elif k == "base":
-            p[k] = ALT_BASES[1] if txt(v0).strip().lower().startswith("curva") else ALT_BASES[0]
+            p[k] = ALT_BASES[1]                     # V200: sempre compras periódicas (a ponderada mensal saiu)
         elif k == "met":
             v_ = txt(v0).strip()
             p[k] = next((m_ for m_ in ALT_METODOS if m_.lower() == v_.lower()), ALT_METODOS[0])
@@ -11587,29 +11580,27 @@ def g_calcular(acoes, todos_nm, p, etf_):
             if p.get("k") and isinstance(ng_, (int, float)) and ng_ > 0 and dref is None:
                 f = f / (ng_ / 3.0) ** (1 / p["k"])
                 obs.append(f"{qual_txt} {ng_:.2f}")
-            nota = pond                    # V199: os fatores aplicam-se à nota 0-5 (mais abaixo), não à percentagem
-        linhas.append([None, txt(d.get("nome")) or t, t, nota, pond_m, simples, pe_u, vol, f_pe, f_vol,
+            nota = pond / f if pond >= 0 else pond * f   # V200: rent. ajustada pelos fatores; a nota 0-5 sai dela
+        linhas.append([None, txt(d.get("nome")) or t, t, nota, pond, simples, pe_u, vol, f_pe, f_vol,
                        txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, real_t, real_a,
                        (pond - pond_ref) if pond is not None and pond_ref is not None else None,
-                       " · ".join(obs) or None, f if nota is not None else None])
-    # V199: nota 0-5 = 5 × rent. ÷ (25% da melhor + 75% da 2.ª), entre 0 e 5; depois ÷ fatores, outra vez entre 0 e 5
+                       " · ".join(obs) or None])
+    # V200: nota 0-5 = 5 × rent. ajustada ÷ (25% da melhor + 75% da 2.ª rent. ajustada), entre 0 e 5
     melhores = sorted((l[3] for l in linhas if isinstance(l[3], float) and l[3] > 0), reverse=True)[:2]
     ref5 = (0.25 * melhores[0] + 0.75 * melhores[1] if len(melhores) == 2 else melhores[0] if melhores
             else None)
     for l in linhas:
         while len(l) < 19:
             l.append(None)
-        n5b = max(0.0, min(5.0, 5 * l[3] / ref5)) if isinstance(l[3], float) and ref5 else None
-        l.append(round(max(0.0, min(5.0, n5b / l[18])), 2) if n5b is not None and l[18] else None)
+        l.append(round(max(0.0, min(5.0, 5 * l[3] / ref5)), 2) if isinstance(l[3], float) and ref5 else None)
     linhas.sort(key=lambda l: (l[19] is None, -(l[19] or 0), -(l[3] or 0)))
     for k, l in enumerate(linhas, 1):
         if l[19] is not None:
             l[0] = k
     rnd = lambda v: round(v, 5) if isinstance(v, float) else v
     gerado = (f"Nota por ganhos calculada em {datetime.now():%d/%m/%Y %H:%M} · {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} · "
-              f"{len(acoes)} {p['grupo']} · base: {p.get('base')}"
-              + (f" (de {p['passo']:g} em {p['passo']:g} dias, sem os últimos {p['tmin']:g} meses)"
-                 if p.get('base') == ALT_BASES[1] else "")
+              f"{len(acoes)} {p['grupo']} · compras de {p['passo']:g} em {p['passo']:g} dias de bolsa até hoje, "
+              f"sem as dos últimos {p['tmin']:g} meses"
               + f" · preço: {p.get('met')} · m = {p['m']:g}, n = {(format(p['n'], 'g') if p.get('n') else 'sem volatilidade')}"
               + (f", k = {p['k']:g}" if p.get("k") else "")
               + f" · {meia_txt}")
@@ -11630,9 +11621,9 @@ def g_calcular(acoes, todos_nm, p, etf_):
                        f"{baixo:+.0%} (medianas); correlação nota × real {rho:+.2f}")
     res = {}
     if ref5:
-        gerado += f" · nota base 5 = {ref5:+.1%}/ano (25% da melhor + 75% da 2.ª), depois ÷ fatores (0 a 5)"
+        gerado += f" · nota 5 = {ref5:+.1%}/ano ajustado (25% da melhor + 75% da 2.ª)"
     for l in linhas:
-        res[l[2]] = {"g_n5": l[19], "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
+        res[l[2]] = {"g_n5": l[19], "g_nota": rnd(l[4]), "g_ajust": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
                      "g_curva": rnd(curvas_.get(l[2])), "g_medida": rnd(l[6]), "g_vol": rnd(l[7]),
                      "g_fpreco": rnd(l[8]), "g_fvol": rnd(l[9]), "g_ref": rnd(l[16]), "g_real_t": rnd(l[14]),
                      "g_real_a": rnd(l[15]), "g_obs": l[17]}
@@ -11643,7 +11634,8 @@ def g_calcular(acoes, todos_nm, p, etf_):
     _gravar_json(FICH_ALT_G[etf_], {"v": ALT_V, "p": p_g, "cf": res, "gerado": gerado})
     for l in linhas[:10]:
         if l[19] is not None:
-            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota por ganhos {l[19]:4.2f} (rent. {l[3]:+6.1%}) · fator preço {l[8]:4.2f}")
+            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota por ganhos {l[19]:4.2f} (rent. {l[4]:+6.1%}, ajustada {l[3]:+6.1%})"
+                  f" · fator preço {l[8]:4.2f}")
     return res, gerado
 
 
