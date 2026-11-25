@@ -355,10 +355,9 @@ _LARG = {"decisao": 18, "preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc":
 COLS = [(k, h, _LARG.get(k, w), f, g) for k, h, w, f, g in COLS]
 # V190: a nota por ganhos (antes nas folhas «nota alternativa») entra nas folhas Ações / ETFs, logo a seguir ao preço
 # noutra moeda (coluna R); a decisão passa para o lado dela
-G_COLS = [("g_n5", "Nota por ganhos (0-5: 5 = 25% da melhor + 75% da 2.ª)", 7, "nota", "ganhos"),
-          ("g_nota", "Nota por ganhos (rent. ajustada, %/ano)", 9, "pct", "ganhos")]
-G_COLS2 = [("g_pond", "Ganhos: rent. anual ponderada (%)", 8, "pct", "ganhos"),
-           ("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
+G_COLS = [("g_n5", "Nota por ganhos (0-5, já ÷ fatores preço e volatilidade)", 7, "nota", "ganhos"),
+          ("g_nota", "Ganhos: rent. anual da base da nota (ponderada ou curva, %/ano)", 9, "pct", "ganhos")]
+G_COLS2 = [("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
            ("g_curva", "Ganhos: rent. da curva, compras periódicas até hoje (%)", 8, "pct", "ganhos"),
            ("g_medida", "Ganhos: medida do preço (P/E, nível 1-5 ou × tendência)", 8, "num1", "ganhos"),
            ("g_vol", "Ganhos: volatilidade anual usada (%)", 8, "pct", "ganhos"),
@@ -368,6 +367,39 @@ G_COLS2 = [("g_pond", "Ganhos: rent. anual ponderada (%)", 8, "pct", "ganhos"),
            ("g_real_t", "Ganhos: real desde a data de cálculo (total, %)", 8, "pct", "ganhos"),
            ("g_real_a", "Ganhos: real desde a data de cálculo (por ano, %)", 8, "pct", "ganhos"),
            ("g_obs", "Ganhos: observações", 30, "txt", "ganhos")]
+G_AJUDA_CAB = {                                         # V199: notas nos cabeçalhos das colunas de ganhos
+    "g_n5": "NOTA POR GANHOS (0-5):\n"
+            "1) nota base = 5 × rent. da base (coluna ao lado) ÷ (25% da melhor + 75% da 2.ª rent.), entre 0 e 5;\n"
+            "2) nota = nota base ÷ fator preço ÷ fator volatilidade [× (qualidade + saúde)/3 ^ (1/k)], outra vez "
+            "entre 0 e 5.\n"
+            "Rent. negativa = 0.",
+    "g_nota": "RENT. DA BASE DA NOTA (sem fatores), conforme a «Base da nota»:\n"
+              "PONDERADA: rentabilidade média por ano a partir dos rendimentos mensais, com mais peso nos meses "
+              "recentes. Meia-vida: o peso de cada mês cai para metade a cada «meia-vida» anos (3 = um mês de há 3 anos "
+              "pesa metade do mais recente). Vazia = todos os meses iguais (≈ rent. simples).\n"
+              "CURVA: igual à coluna «rent. da curva».\n"
+              "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.",
+    "g_pond": "RENT. ANUAL PONDERADA: rentabilidade média por ano a partir dos rendimentos mensais, com mais peso "
+              "nos meses recentes.\n"
+              "• Meia-vida: o peso de cada mês cai para metade a cada «meia-vida» anos (3 = um mês de há 3 anos pesa "
+              "metade do mais recente). Vazia = todos os meses iguais (≈ rent. simples).\n"
+              "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.\n"
+              "Mostra sempre esta medida, mesmo com Base da nota = curva.",
+    "g_simples": "RENT. ANUAL SIMPLES: (preço final ÷ preço inicial)^(1/anos) − 1. Só olha para o primeiro e o "
+                 "último dia do período.\n"
+                 "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.\n"
+                 "• A meia-vida não conta.",
+    "g_curva": "RENT. DA CURVA: simula comprar de X em X dias e guardar tudo até ao fim do período (como a curva da "
+               "Comp Rent Títulos): ganho total ÷ tempo total investido, em %/ano.\n"
+               "• Curva: de X em X dias = frequência das compras (muda pouco).\n"
+               "• Curva: tempo mín. = as compras dos últimos N meses não entram.\n"
+               "• Meia-vida: compras recentes pesam mais (vazia = todas iguais).\n"
+               "• Data de cálculo e Extensão definem o período.",
+    "g_ref": "PONDERADA − REFERÊNCIA: a medida da Base da nota (ponderada ou curva) deste título menos a mesma medida "
+             "do título de Referência, no mesmo período e com os mesmos pesos.\n"
+             "Positiva = bateu a referência. Vazia se não houver referência.\n"
+             "Só informativa: não entra na nota nem na ordem.",
+}
 _dec = next(c for c in COLS if c[0] == "decisao")
 _i = [c[0] for c in COLS].index("preco_alt") + 1
 COLS = COLS[:_i] + G_COLS + [_dec] + G_COLS2 + [c for c in COLS[_i:] if c[0] != "decisao"]
@@ -437,6 +469,7 @@ AC_L0 = 5   # linha do cabeçalho da folha Acrescentados
 REC_ORDEM = {"strong_buy": 0, "buy": 1, "hold": 2, "underperform": 3, "sell": 4, "strong_sell": 5}
 CRITERIOS_ORD = [
     ("Nota por ganhos (5 → 0)", "g_n5", True),
+    ("Melhor nota global com nota por ganhos igual ou maior a (valor ao lado)", "ng_gmin", True),
     ("Nota global (5 → 0)", "nota_geral", True),
     ("Nota geral, sem o preço (5 → 0)", "nota", True),
     ("Pontuação (5 → 1)", "pont", True),
@@ -559,6 +592,11 @@ def chave_ordem(criterio):
             if isinstance(nv, (int, float)) and round(nv, 2) >= ORD_MIN["v"] - 1e-9:
                 return (0, -ng, -nv, -p) + desempate(d)
             return (1, -ng, -p) + desempate(d)
+        if k == "ng_gmin":              # V198: nota por ganhos ≥ mínimo primeiro, pela nota global; depois os outros
+            g5 = d.get("g_n5")
+            if isinstance(g5, (int, float)) and round(g5, 2) >= ORD_MIN["v"] - 1e-9:
+                return (0, -ng, -g5, -p) + desempate(d)
+            return (1, -ng, -p) + desempate(d)
         if k == "nt_npmin":             # nível de preço ≥ mínimo primeiro, pela nota geral; depois os outros
             nv = d.get("nivel_preco")
             if isinstance(nv, (int, float)) and round(nv, 2) >= ORD_MIN["v"] - 1e-9:
@@ -631,7 +669,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V197", "25/11/2026"
+VERSAO, DATA_VERSAO = "V199", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1449,10 +1487,12 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         ws[c].fill = PatternFill("solid", fgColor="FFF2CC")
         ws[c].border = Border(*(Side(style="thin", color="A6A6A6"),) * 4)
     ws[C_DATAREF].number_format = "dd/mm/yyyy"
+    ws.merge_cells(f"{C_DATAREF}:{get_column_letter(column_index_from_string(C_DATAREF[0]) + 1)}{C_DATAREF[1:]}")
+    ws[C_DATAREF].alignment = Alignment(horizontal="center", vertical="center")
     from openpyxl.formatting.rule import FormulaRule as _FR      # valores que só contam com uma escolha: cinzento
     _cz, _fz = PatternFill("solid", bgColor="808080"), Font(color="BFBFBF")
     for cel_, f_ in ((C_SEL_V, f'LEFT(${C_SEL[0]}${C_SEL[1:]},2)<>"NG"'),
-                     (C_ORD_MIN, f'AND(${C_ORD[0]}${C_ORD[1:]}<>"Melhor preço com nota igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor nota com nível de preço igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor preço com nota global igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor nota global com nível de preço igual ou maior a (valor ao lado)")'),
+                     (C_ORD_MIN, f'AND(${C_ORD[0]}${C_ORD[1:]}<>"Melhor preço com nota igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor nota com nível de preço igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor preço com nota global igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor nota global com nível de preço igual ou maior a (valor ao lado)",${C_ORD[0]}${C_ORD[1:]}<>"Melhor nota global com nota por ganhos igual ou maior a (valor ao lado)")'),
                      (C_DATAREF, f'${C_REF[0]}${C_REF[1:]}<>"Data (escrever ao lado)"'),
                      (C_LPMIN, f"LOWER(TRIM('{FOLHA_PESOS}'!$E$38))=\"x\"")):     # G4 não conta com o fator
         ws.conditional_formatting.add(cel_, _FR(formula=[f_], fill=_cz, font=_fz))
@@ -6024,7 +6064,7 @@ main{padding:8px 10px 40px}
 <div class="at" id="at"></div>
 <div class="tabs"><button class="tab on" data-t="A">Ações</button><button class="tab" data-t="E">ETFs</button><button class="tab" data-t="X">Detidos</button><button class="tab" data-t="C">Compra</button><button class="tab" data-t="G">Gráficos</button></div>
 <div class="bar"><input id="q" type="search" placeholder="Procurar nome ou código"><select id="o">
-<option value="g5:d">Nota por ganhos (0-5)</option><option value="ng:d">Nota global (nota geral + preço)</option><option value="nt">Nota geral (sem o preço)</option><option value="bpg">Mais barata primeiro, nota global igual ou maior a…</option><option value="ngp">Melhor nota global, nível de preço igual ou maior a…</option><option value="bp">Melhor preço para comprar</option><option value="bpm">Mais barata primeiro, nota igual ou maior a…</option><option value="ntp">Melhor nota, nível de preço igual ou maior a…</option><option value="pt:d">Pontuação do sinal</option><option value="np:d">Nível de preço (mais barata primeiro)</option><option value="q:d">Qualidade</option><option value="s:d">Saúde financeira</option><option value="o.pot:d">Analistas (alvo / preço)</option><option value="o.justo_pct:d">Valor justo / preço</option><option value="be:a">Beta (mais defensivas primeiro)</option><option value="be:d">Beta (mais voláteis primeiro)</option><option value="o.var1d:d">Subida no último dia</option><option value="o.var1m:d">Subida no último mês</option><option value="o.val_sempre:d">Valorização desde sempre</option><option value="o.val10:d">Valorização 10 anos</option><option value="o.val5:d">Valorização 5 anos</option><option value="o.val3:d">Valorização 3 anos</option><option value="o.val1:d">Valorização 1 ano</option><option value="o.dist0:a">Mais abaixo do máx. da semana</option><option value="vd">Valor detido</option><option value="tmp">Compra máx. mais perto</option><option value="n">Nome</option></select></div><div id="nmb"><span id="nml">Nota geral igual ou maior a</span><input id="nm" type="text" inputmode="decimal" value="4"><span id="nmc" style="opacity:.8"></span></div>
+<option value="g5:d">Nota por ganhos (0-5)</option><option value="ng:d">Nota global (nota geral + preço)</option><option value="nt">Nota geral (sem o preço)</option><option value="bpg">Mais barata primeiro, nota global igual ou maior a…</option><option value="ngp">Melhor nota global, nível de preço igual ou maior a…</option><option value="ngg">Melhor nota global, nota por ganhos igual ou maior a…</option><option value="bp">Melhor preço para comprar</option><option value="bpm">Mais barata primeiro, nota igual ou maior a…</option><option value="ntp">Melhor nota, nível de preço igual ou maior a…</option><option value="pt:d">Pontuação do sinal</option><option value="np:d">Nível de preço (mais barata primeiro)</option><option value="q:d">Qualidade</option><option value="s:d">Saúde financeira</option><option value="o.pot:d">Analistas (alvo / preço)</option><option value="o.justo_pct:d">Valor justo / preço</option><option value="be:a">Beta (mais defensivas primeiro)</option><option value="be:d">Beta (mais voláteis primeiro)</option><option value="o.var1d:d">Subida no último dia</option><option value="o.var1m:d">Subida no último mês</option><option value="o.val_sempre:d">Valorização desde sempre</option><option value="o.val10:d">Valorização 10 anos</option><option value="o.val5:d">Valorização 5 anos</option><option value="o.val3:d">Valorização 3 anos</option><option value="o.val1:d">Valorização 1 ano</option><option value="o.dist0:a">Mais abaixo do máx. da semana</option><option value="vd">Valor detido</option><option value="tmp">Compra máx. mais perto</option><option value="n">Nome</option></select></div><div id="nmb"><span id="nml">Nota geral igual ou maior a</span><input id="nm" type="text" inputmode="decimal" value="4"><span id="nmc" style="opacity:.8"></span></div>
 </header>
 <div id="glob" style="display:none"></div>
 <div id="qd" style="display:none;position:fixed;top:70px;left:8px;right:8px;z-index:20;background:#fffbe6;color:#222;border:1px solid #c9b458;border-radius:12px;padding:10px 34px 10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px;line-height:1.5"><button id="qdx" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border:0;border-radius:50%;background:#d93025;color:#fff;font-weight:700">✕</button><div id="qdt"></div></div>
@@ -6130,7 +6170,7 @@ function cartao(d){
   let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${cb};color:${fb}" title="${G5!=null?'Nota por ganhos (0-5) · em baixo: nota global':'Nota global (nota geral + preço)'}${d.np!=null?' · nível de preço '+num(d.np,1)+'/5':''}">${G5!=null?num(G5,1):NG==null?'–':num(NG,1)}${G5!=null&&NG!=null?`<small style="display:block;font-size:10px;font-weight:400;margin-top:1px">global ${num(NG,1)}</small>`:''}</div>
   <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
-  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.nt!=null&&d.ng!=null?` <span class="dec" style="background:${cor(d.nt)}" title="Nota geral: negócio, tendência e momento, sem o preço">geral ${num(d.nt,1)}</span>`:''}${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Nota por ganhos: rentabilidade anual ponderada pelo tempo, ajustada ao preço">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
+  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota por ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
   <div>Valor total<b>${d.vd!=null?eur(d.vd):'–'}${d.lpp!=null?` <span style="color:${d.lpp>=0?'#1e8e3e':'#d93025'}">(${pct2(d.lpp)})</span>`:''}</b></div>
   <div>Lucro / prejuízo<b>${d.le!=null?`<span style="color:${d.le>=0?'#1e8e3e':'#d93025'}">${d.le>=0?'+':'−'}${eur(Math.abs(d.le))}</span>`:'–'}</b></div></div>`:''}
   <div class="lv"><div class="rt">Compra</div><div>Preço compra (Limite)<b>${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -6310,17 +6350,19 @@ function lucros(t){
   const g=t.filter(x=>x.a>x.c).sort((x,y)=>(y.a-y.c)-(x.a-x.c)), p=t.filter(x=>x.a<x.c).sort((x,y)=>(x.a-x.c)-(y.a-y.c));
   return g.map((x,i)=>({n:x.n,v:x.a-x.c,s:1,cor:VD[i%VD.length]})).concat(p.map((x,i)=>({n:x.n,v:x.c-x.a,s:-1,cor:VM[i%VM.length]})));
 }
-function minAtivo(){const o=document.getElementById('o').value;return ['bpm','ntp','bpg','ngp'].includes(o);}
+function minAtivo(){const o=document.getElementById('o').value;return ['bpm','ntp','bpg','ngp','ngg'].includes(o);}
 function minimo(){const m=parseFloat(String(document.getElementById('nm').value).replace(',','.'));return isNaN(m)?0:m;}
-function campoMin(){const o=document.getElementById('o').value,v=['bpm','ntp','bpg','ngp'].includes(o),nm=document.getElementById('nm');
+function campoMin(){const o=document.getElementById('o').value,v=['bpm','ntp','bpg','ngp','ngg'].includes(o),nm=document.getElementById('nm');
   document.getElementById('nmb').style.display=v&&aba!=='G'?'flex':'none';
-  if(v){let x=null;try{x=localStorage.getItem('nm_v_'+o);}catch(e){}const pr_=o==='ntp'||o==='ngp';nm.value=x||(pr_?'3,5':'4');
-    document.getElementById('nml').textContent=pr_?'Nível de preço igual ou maior a':o==='bpg'?'Nota global igual ou maior a':'Nota geral igual ou maior a';}}
+  if(v){let x=null;try{x=localStorage.getItem('nm_v_'+o);}catch(e){}const pr_=o==='ntp'||o==='ngp';nm.value=x||(pr_||o==='ngg'?'3,5':'4');
+    document.getElementById('nml').textContent=pr_?'Nível de preço igual ou maior a':o==='ngg'?'Nota por ganhos igual ou maior a':o==='bpg'?'Nota global igual ou maior a':'Nota geral igual ou maior a';}}
 function mostrar(){
   const q=document.getElementById('q').value.trim().toLowerCase(), o=document.getElementById('o').value;
   const prep=l=>{if(q) l=l.filter(d=>(d.n+' '+d.c+' '+d.t).toLowerCase().includes(q));
     if(o.includes(':')){const [k,dr]=o.split(':'),g=d=>{const v=k.startsWith('o.')?(d.or||{})[k.slice(2)]:d[k];return typeof v==='number'?v:null;};
       return l.slice().sort((a,b)=>{const x=g(a),y=g(b);if(x==null&&y==null)return (b.nt??-9)-(a.nt??-9);if(x==null)return 1;if(y==null)return -1;return dr==='a'?x-y:y-x;});}
+    if(o==='ngg'){const mn=minimo(),G=d=>d.ng??d.nt??-9,ok=d=>d.g5!=null&&Math.round(d.g5*100)/100>=mn-1e-9;
+      return l.filter(ok).sort((a,b)=>(G(b)-G(a))||((b.g5??-9)-(a.g5??-9)));}
     if(o==='ngp'){const mn=minimo(),G=d=>d.ng??d.nt??-9,
         ok=d=>d.np!=null&&Math.round(d.np*100)/100>=mn-1e-9;
       return l.filter(ok).sort((a,b)=>(G(b)-G(a))||((b.np??-9)-(a.np??-9)));}
@@ -6343,7 +6385,7 @@ function mostrar(){
   const el=document.getElementById('lst');
   let h='';
   document.querySelector('.bar').style.display=aba==='G'?'none':'flex';
-  {const o2=document.getElementById('o').value;document.getElementById('nmb').style.display=['bpm','ntp','bpg','ngp'].includes(o2)&&aba!=='G'?'flex':'none';}
+  {const o2=document.getElementById('o').value;document.getElementById('nmb').style.display=['bpm','ntp','bpg','ngp','ngg'].includes(o2)&&aba!=='G'?'flex':'none';}
   if(aba==='G'){el.innerHTML=graficos();return;}
   if(aba==='C'){document.getElementById('o').style.display='none';document.getElementById('nmb').style.display='none';
     if(!document.getElementById('cf')){el.innerHTML=compra();ligarCompra();}else calcCompra();return;}
@@ -11149,8 +11191,8 @@ def g_topo(wb, ws, etf):
     ws[G_C_GER].font = Font(size=9, color="7030A0")
     ws[G_C_GER].alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells("A8:O9")
-    ws["A8"] = ("NOTA POR GANHOS = rentabilidade anual ponderada pelo tempo (euros, com dividendos) ÷ fator do preço "
-                "[÷ fator da volatilidade] [× qualidade + saúde]; a nota 0-5 é proporcional (5 = 25% da melhor + 75% da 2.ª). "
+    ws["A8"] = ("NOTA POR GANHOS (0-5) = nota base (5 × rent. anual ÷ (25% da melhor + 75% da 2.ª), entre 0 e 5) ÷ fator do "
+                "preço [÷ fator da volatilidade] [× qualidade + saúde], outra vez entre 0 e 5. Rent. em euros, com dividendos. "
                 "Calcula-se em cada ▶ ATUALIZAR. Explicação completa no fim da tabela.")
     ws["A8"].font = Font(italic=True, size=8, color="595959")
     ws["A8"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -11181,6 +11223,9 @@ def g_topo(wb, ws, etf):
         "Em 3 anos de análise, com meia-vida 3, o início pesa 50%.\n"
         "Mais curta: reage mais depressa a mudanças recentes (mas com mais ruído).\n"
         "Mais longa: mais estável (mas lenta a apanhar mudanças).", "Painel", width=420, height=230)
+    for k_, txt_ in G_AJUDA_CAB.items():                 # V199: o que é cada coluna de ganhos (nota no cabeçalho)
+        if k_ in COL:
+            ws.cell(L0, COL[k_]).comment = Comment(txt_, "Painel", width=430, height=200)
     for t_, (c0, cv, cf_) in enumerate(ALT_TAB):        # molduras: linhas finas, contorno grosso
         n_lin = len([1 for i in range(len(ALT_PAR)) if i // 9 == t_])
         for r in range(1, n_lin + 1):
@@ -11211,9 +11256,9 @@ def g_topo(wb, ws, etf):
     while txt(ws.cell(ult_ + 1, COL["ticker"]).value):
         ult_ += 1
     ws.cell(ult_ + 4, 1, (
-        "NOTA POR GANHOS (colunas S-T e V-AF; a nota 0-5 é proporcional: 5 = 25% da melhor + 75% da 2.ª, nunca abaixo de 0 nem "
-        "acima de 5; cores como as da nota global) = rentabilidade anual ponderada pelo tempo ÷ fator do preço [÷ fator da "
-        "volatilidade] [× peso da qualidade e saúde]. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL "
+        "NOTA POR GANHOS (colunas S-T e V-AE; cores como as da nota global) = nota base ÷ fator do preço [÷ fator da "
+        "volatilidade] [× peso da qualidade e saúde], nunca abaixo de 0 nem acima de 5; nota base = 5 × rentabilidade ÷ "
+        "(25% da melhor + 75% da 2.ª rentabilidade), também entre 0 e 5. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL "
         "(rentabilidades mensais da extensão escolhida; cada mês pesa metade do mês «meia-vida» anos mais recente; vazia = "
         "todos iguais; ver a nota no parâmetro); a "
         "mesma da Comp Rent Títulos) ou CURVA DA COMP RENT (o que se ganhava por ano comprando de X em X dias de bolsa e "
@@ -11327,6 +11372,9 @@ def g_ler_params(vals):
             p[k] = next((m_ for m_ in ALT_METODOS if m_.lower() == v_.lower()), ALT_METODOS[0])
         elif k == "vol_pond":
             p[k] = "x" if txt(v0).strip().lower() == "x" else ""
+        elif k in ("hmin", "pe_min", "tmin"):            # V198: estes podem ser 0 (ou menos do que o aconselhado)
+            v_ = _num_ou(v0)
+            p[k] = v_ if v_ is not None and v_ >= 0 else ALT_PADRAO[k]
         else:
             v_ = _num_ou(v0)
             p[k] = v_ if v_ is not None and v_ > 0 else ALT_PADRAO[k]
@@ -11539,14 +11587,23 @@ def g_calcular(acoes, todos_nm, p, etf_):
             if p.get("k") and isinstance(ng_, (int, float)) and ng_ > 0 and dref is None:
                 f = f / (ng_ / 3.0) ** (1 / p["k"])
                 obs.append(f"{qual_txt} {ng_:.2f}")
-            nota = pond / f if pond >= 0 else pond * f
+            nota = pond                    # V199: os fatores aplicam-se à nota 0-5 (mais abaixo), não à percentagem
         linhas.append([None, txt(d.get("nome")) or t, t, nota, pond_m, simples, pe_u, vol, f_pe, f_vol,
                        txt(d.get("decisao")), nt_painel.get(t), pos_painel.get(t), None, real_t, real_a,
                        (pond - pond_ref) if pond is not None and pond_ref is not None else None,
-                       " · ".join(obs) or None])
-    linhas.sort(key=lambda l: (l[3] is None, -(l[3] or 0)))
+                       " · ".join(obs) or None, f if nota is not None else None])
+    # V199: nota 0-5 = 5 × rent. ÷ (25% da melhor + 75% da 2.ª), entre 0 e 5; depois ÷ fatores, outra vez entre 0 e 5
+    melhores = sorted((l[3] for l in linhas if isinstance(l[3], float) and l[3] > 0), reverse=True)[:2]
+    ref5 = (0.25 * melhores[0] + 0.75 * melhores[1] if len(melhores) == 2 else melhores[0] if melhores
+            else None)
+    for l in linhas:
+        while len(l) < 19:
+            l.append(None)
+        n5b = max(0.0, min(5.0, 5 * l[3] / ref5)) if isinstance(l[3], float) and ref5 else None
+        l.append(round(max(0.0, min(5.0, n5b / l[18])), 2) if n5b is not None and l[18] else None)
+    linhas.sort(key=lambda l: (l[19] is None, -(l[19] or 0), -(l[3] or 0)))
     for k, l in enumerate(linhas, 1):
-        if l[3] is not None:
+        if l[19] is not None:
             l[0] = k
     rnd = lambda v: round(v, 5) if isinstance(v, float) else v
     gerado = (f"Nota por ganhos calculada em {datetime.now():%d/%m/%Y %H:%M} · {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} · "
@@ -11565,21 +11622,17 @@ def g_calcular(acoes, todos_nm, p, etf_):
     if dref is not None:
         com = [l for l in linhas if l[3] is not None and l[14] is not None]
         if len(com) >= 6:
-            dfc = pd.DataFrame([(l[3], l[14]) for l in com], columns=["n", "r"])
+            dfc = pd.DataFrame([(l[19], l[14]) for l in com], columns=["n", "r"])
             rho = float(dfc["n"].rank().corr(dfc["r"].rank()))
             k3 = max(2, len(com) // 3)
             cima, baixo = float(dfc["r"].iloc[:k3].median()), float(dfc["r"].iloc[-k3:].median())
             gerado += (f" · ANÁLISE EM {fim:%d/%m/%Y}: desde então, o terço de cima variou {cima:+.0%} e o de baixo "
                        f"{baixo:+.0%} (medianas); correlação nota × real {rho:+.2f}")
     res = {}
-    melhores = sorted((l[3] for l in linhas if isinstance(l[3], float) and l[3] > 0), reverse=True)[:2]
-    ref5 = (0.25 * melhores[0] + 0.75 * melhores[1] if len(melhores) == 2 else melhores[0] if melhores
-            else None)                                                   # V193: 5 = 25% da 1.ª + 75% da 2.ª
-    n5_ = lambda v: round(max(0.0, min(5.0, 5 * v / ref5)), 2) if isinstance(v, float) and ref5 else None
     if ref5:
-        gerado += f" · nota 5 = {ref5:+.1%}/ano (25% da melhor + 75% da 2.ª)"
+        gerado += f" · nota base 5 = {ref5:+.1%}/ano (25% da melhor + 75% da 2.ª), depois ÷ fatores (0 a 5)"
     for l in linhas:
-        res[l[2]] = {"g_n5": n5_(l[3]), "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
+        res[l[2]] = {"g_n5": l[19], "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
                      "g_curva": rnd(curvas_.get(l[2])), "g_medida": rnd(l[6]), "g_vol": rnd(l[7]),
                      "g_fpreco": rnd(l[8]), "g_fvol": rnd(l[9]), "g_ref": rnd(l[16]), "g_real_t": rnd(l[14]),
                      "g_real_a": rnd(l[15]), "g_obs": l[17]}
@@ -11589,8 +11642,8 @@ def g_calcular(acoes, todos_nm, p, etf_):
     p_g["data"] = dref.strftime("%Y-%m-%d") if dref is not None else None
     _gravar_json(FICH_ALT_G[etf_], {"v": ALT_V, "p": p_g, "cf": res, "gerado": gerado})
     for l in linhas[:10]:
-        if l[3] is not None:
-            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota por ganhos {l[3]:+6.1%} · fator preço {l[8]:4.2f}")
+        if l[19] is not None:
+            print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota por ganhos {l[19]:4.2f} (rent. {l[3]:+6.1%}) · fator preço {l[8]:4.2f}")
     return res, gerado
 
 
