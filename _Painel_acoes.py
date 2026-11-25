@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V207", "25/11/2026"
+VERSAO, DATA_VERSAO = "V208", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -9256,18 +9256,18 @@ def calcular_historico():
 FOLHA_SIM = "Simulador"
 FICH_SIM = os.path.join(PASTA, "_Painel_acoes_simulador.json")   # escolhas e último resultado do simulador
 SIM_PERIODOS = ["Nenhum", "Semanal", "Mensal", "Trimestral", "Semestral", "Anual"]
-SIM_COMPRAR = ["1 · Os meus títulos (com x)",
-               "2 · Os N melhores pela nota geral de hoje",
-               "3 · Nota geral de hoje ≥ valor",
+SIM_COMPRAR = ["1 · Os meus títulos (com x)",            # V208: as notas são as notas por ganhos
+               "2 · Os N melhores pela nota por ganhos de hoje",
+               "3 · Nota por ganhos de hoje ≥ valor",
                "4 · A carteira da tabela (tickers e pesos)",
-               "5 · Os N melhores pela nota do painel em cada data",
-               "6 · Nota do painel em cada data ≥ valor",
-               "7 · N ações + N ETFs, nota geral de hoje",
-               "8 · N ações + N ETFs, nota do painel em cada data",
-               "9 · Os N com melhor preço (nível de preço) e nota geral ≥ mínimo (hoje)",
-               "10 · Os N com melhor preço em cada data e nota ≥ mínimo (só ações dos EUA, dados da SEC)",
-               "11 · Todos com nível de preço ≥ F6 e nota geral ≥ mínimo (hoje)",
-               "12 · Todos com nível de preço ≥ F6 e nota ≥ mínimo em cada data (só ações dos EUA, dados da SEC)"]
+               "5 · Os N melhores pela nota por ganhos em cada data",
+               "6 · Nota por ganhos em cada data ≥ valor",
+               "7 · N ações + N ETFs, nota por ganhos de hoje",
+               "8 · N ações + N ETFs, nota por ganhos em cada data",
+               "9 · Os N com melhor preço (nível de preço) e nota por ganhos ≥ mínimo (hoje)",
+               "10 · Os N com melhor preço em cada data e nota por ganhos ≥ mínimo (só ações dos EUA, dados da SEC)",
+               "11 · Todos com nível de preço ≥ F6 e nota por ganhos ≥ mínimo (hoje)",
+               "12 · Todos com nível de preço ≥ F6 e nota por ganhos ≥ mínimo em cada data (só ações dos EUA, dados da SEC)"]
 
 
 def _sim_cod(t):
@@ -9449,8 +9449,8 @@ def folha_simulador(wb):
     cod_f = 'IFERROR(VALUE(LEFT($C$6,FIND(" ",$C$6&" ")-1)),0)'
     cinza = PatternFill("solid", bgColor="808080")
     _nn, _nu = '"N: quantos títulos →"', '"(F6 não se usa nesta opção)"'
-    ws["E6"] = (f'=CHOOSE({cod_f}+1,{_nu},{_nu},{_nn},"Nota geral mínima (hoje) →",{_nu},{_nn},'
-                f'"Nota mínima em cada data →",{_nu},{_nu},{_nn},{_nn},"Nível de preço mínimo (5 = muito barata) →",'
+    ws["E6"] = (f'=CHOOSE({cod_f}+1,{_nu},{_nu},{_nn},"Nota por ganhos mínima (hoje) →",{_nu},{_nn},'
+                f'"Nota por ganhos mínima em cada data →",{_nu},{_nu},{_nn},{_nn},"Nível de preço mínimo (5 = muito barata) →",'
                 f'"Nível de preço mínimo em cada data (5 = muito barata) →")')
     ws["E6"].font = Font(bold=True, color="7030A0")
     usa = {"F6": (2, 3, 5, 6, 9, 10, 11, 12), "C7:D7": (1, 2, 3, 5, 6, 9, 11), "C10:D10": (5, 6, 8, 10, 12),
@@ -9460,9 +9460,8 @@ def folha_simulador(wb):
     for rng_, cods in usa.items():                       # não conta para a escolha feita em «Comprar» -> cinzento
         f_ = "NOT(OR(" + ",".join(f"{cod_f}={c}" for c in cods) + "))"
         ws.conditional_formatting.add(rng_, FormulaRule(formula=[f_], fill=cinza, font=Font(color="BFBFBF")))
-    ws["E13"] = ("(opções 5, 6, 8, 10, 12: não se compra nenhum título com nota abaixo disto na data da compra — só com "
-                 "dados antigos a nota das ações vai no máximo a ≈4,2; opções 9 e 11: só entram os de nota geral de hoje "
-                 "≥ isto; vazio = sem mínimo)")
+    ws["E13"] = ("(nota por ganhos, 0-5. Opções 5, 6, 8, 10, 12: não se compra nenhum título com nota abaixo disto na "
+                 "data da compra; opções 9 e 11: só entram os de nota por ganhos de hoje ≥ isto; vazio = sem mínimo)")
     ws["E13"].font = Font(italic=True, size=9, color="808080")
     ws["G11"] = ("(só em «N primeiras ações + N primeiros ETFs»: cada reforço põe estes valores em cada parte, na "
                  "periodicidade escolhida; o investimento inicial reparte-se na mesma proporção)")
@@ -12412,6 +12411,8 @@ def simular():
     r = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0}:{ultima}{L0 + MAX_LINHAS}"} for idx in (1, 2)])
     acoes, etfs = (linhas_por_cabecalho(tab, i) for i, tab in zip((1, 2), r))
     acoes, etfs = list(acoes), list(etfs)
+    for d in acoes + etfs:                                # V208: a nota usada no simulador é a nota por ganhos
+        d["nota"] = d.get("g_n5") if isinstance(d.get("g_n5"), (int, float)) else None
     univ = {"Só ações": acoes, "Só ETFs": etfs}.get(p["entre"], acoes + etfs)
     moedas = {txt(d.get("ticker")).upper(): txt(d.get("moeda")) for d in acoes + etfs if txt(d.get("ticker"))}
     nomes = {txt(d.get("ticker")).upper(): txt(d.get("nome")) for d in acoes + etfs if txt(d.get("ticker"))}
@@ -12548,10 +12549,33 @@ def simular():
             sec = sec_preparar([d for d in acoes if txt(d.get("ticker")).upper() in cols + cols_h], ini, fim)
         except Exception as e:
             print(f"   SEC: {e}")
-        print(f"   a calcular a nota do painel de {len(cols)} títulos em {len(dias_c)} datas (só com os dados de cada data) ...")
         niveis_p = pd.DataFrame(index=pd.DatetimeIndex(dias_c), columns=cols, dtype=float)
-        notas_p = _sim_notas_painel(loc[cols + cols_h], tipos, dias_c, sec, niveis_p, None, hold)[cols].reindex(tab.index)
+        if cod in (10, 12):                               # o nível de preço em cada data (relatórios da SEC)
+            print(f"   a calcular o nível de preço de {len(cols)} títulos em {len(dias_c)} datas ...")
+            _sim_notas_painel(loc[cols + cols_h], tipos, dias_c, sec, niveis_p, None, hold)
         niveis_p = niveis_p.reindex(tab.index)
+        # V208: a nota de cada data é a nota por ganhos (com os parâmetros das folhas Ações / ETFs, só com as cotações
+        # até essa data), numa grelha de até 60 datas; entre elas vale a da data anterior
+        todos_nm = {}
+        for d_ in acoes + etfs:
+            todos_nm.setdefault(txt(d_.get("nome")).strip().lower(), d_)
+        grelha = dias_c[::max(1, -(-len(dias_c) // 60))]
+        gnot = pd.DataFrame(index=pd.DatetimeIndex(dias_c), columns=cols, dtype=float)
+        for etf_, lst_ in ((False, acoes), (True, etfs)):
+            meus = [t for t in cols if any(txt(d_.get("ticker")).upper() == t for d_ in lst_)]
+            if not meus:
+                continue
+            print(f"   a calcular a nota por ganhos de {len(lst_)} {'ETFs' if etf_ else 'ações'} em {len(grelha)} datas "
+                  "(só com as cotações de cada data) ...")
+            gd = g_notas_datas(lst_, todos_nm, etf_, grelha)
+            for dia in dias_c:
+                ant_ = [x for x in grelha if x <= dia and x in gd]
+                if ant_:
+                    for t in meus:
+                        v_ = gd[ant_[-1]].get(t)
+                        if isinstance(v_, (int, float)):
+                            gnot.at[dia, t] = float(v_)
+        notas_p = gnot.reindex(tab.index)
     if duplo:                                             # corre cada parte e soma
         unid, inv_t, fluxos = {}, {}, []
         sv = si = None
@@ -12616,17 +12640,18 @@ def simular():
                      "critérios) — experimenta baixar a nota mínima (C13) ou o nível mínimo (F6)".replace(",", " "))
     if nmin is not None:
         notas.append(f"só se compram títulos com nota ≥ {nmin:g} na data da compra" if dinamico else
-                     f"só entram títulos com nota geral de hoje ≥ {nmin:g}")
+                     f"só entram títulos com nota por ganhos de hoje ≥ {nmin:g}")
     if ini_ef > ini + pd.Timedelta(days=7):
         notas.append(f"sem cotações antes de {ini_ef:%d/%m/%Y}: a simulação começa aí")
     if dinamico:
-        notas.append(f"reclassificado em cada data pela nota do painel (as mesmas regras da nota geral) só com os "
-                     f"dados de cada data; ações dos EUA com qualidade, saúde e preço pelos relatórios anuais da SEC já "
-                     f"divulgados nessa data ({len(sec)} empresas); nas outras, sem qualidade e saúde (contam como o "
-                     f"sinal); analistas nunca (não há histórico); {p.get('rodar')}; {len(vezes)} títulos diferentes "
+        notas.append(f"reclassificado em cada data pela nota por ganhos (parâmetros das folhas Ações / ETFs) só com "
+                     f"as cotações até cada data (o preço pela distância à tendência; sem qualidade e saúde)"
+                     + (f"; nível de preço das ações dos EUA pelos relatórios anuais da SEC já divulgados nessa data "
+                        f"({len(sec)} empresas)" if cod in (10, 12) else "")
+                     + f"; {p.get('rodar')}; {len(vezes)} títulos diferentes "
                      "escolhidos ao longo do tempo; a lista de títulos é a de hoje (as que desapareceram não entram)")
     elif cod in (2, 3, 7, 9, 11):
-        notas.append("escolha feita pela nota de hoje: o passado fica favorecido")
+        notas.append("escolha feita pela nota por ganhos de hoje (que já usa o passado): o passado fica favorecido")
     infl_s, infl_fonte = None, None
     try:
         infl_s, infl_fonte = _sim_inflacao()
