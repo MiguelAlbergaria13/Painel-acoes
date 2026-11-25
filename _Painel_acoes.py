@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V204", "25/11/2026"
+VERSAO, DATA_VERSAO = "V207", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1240,10 +1240,7 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
             import traceback
             traceback.print_exc()
             print(f"   aviso: parâmetros da nota por ganhos ({nf_}) não criados:", e)
-    try:
-        folha_comparar(wb)
-    except Exception as e:
-        print("   aviso: folha Comparar notas não criada:", e)
+    # V206: a folha Comparar notas saiu
     if FOLHA_CRT in wb.sheetnames and "Carteira" in wb.sheetnames:   # V169: logo a seguir à Carteira
         wb.move_sheet(FOLHA_CRT, offset=wb.sheetnames.index("Carteira") + 1 - wb.sheetnames.index(FOLHA_CRT))
     for nome in ("Acrescentados", FOLHA_PESOS):       # estas duas no fim (são pouco usadas)
@@ -1254,7 +1251,27 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
     wb.active = 0
     for ws in wb.worksheets:
         marcar_versao(ws)
+    centrar_vertical(wb)
     return wb
+
+
+def centrar_vertical(wb):
+    """V207: todas as células com dados e resultados centradas na vertical (os textos de ajuda longos ficam como
+    estão, em cima)."""
+    from openpyxl.cell.cell import MergedCell
+    for ws in wb.worksheets:                         # só as células que já existem (não cria novas) e visíveis
+        esc_ = {k for k, d in ws.column_dimensions.items() if d.hidden}
+        for c in list(ws._cells.values()):
+                if isinstance(c, MergedCell) or c.column_letter in esc_:
+                    continue
+                v = c.value
+                if isinstance(v, str) and len(v) > 100 and not v.startswith("="):
+                    continue
+                a = c.alignment
+                if a.vertical == "center":
+                    continue
+                c.alignment = Alignment(horizontal=a.horizontal, vertical="center", wrap_text=a.wrap_text,
+                                        shrink_to_fit=a.shrink_to_fit, indent=a.indent, text_rotation=a.text_rotation)
 
 
 def _fmt_cel_base(c, k, fmt):
@@ -3539,7 +3556,7 @@ def folha_pesos(wb):
                  "muda); quem estagnou ou cai perde até 30%; com a volatilidade (linha 50), quem oscila muito perde até mais "
                  "15%; com o bónus de estabilidade (linha 56), quem oscila pouco e sobe com regularidade ganha até 9%. Com x, o travão de G4 (2,5 \"Não Rent. Longo Prazo\") e o "
                  "«estabilizou» da nota da tendência deixam de se usar. A coluna \"Longo prazo\" mostra o fator e "
-                 "porquê. Também se usa no Simulador e no Comparar notas.")
+                 "porquê. Também se usa no Simulador.")
     ws["C38"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["C38"].font = Font(size=9)
     ws.row_dimensions[38].height = 200
@@ -6244,7 +6261,8 @@ function calcCompra(){
     const esc_=[],fixT=new Set();
     for(const [tk,pc] of FXL){const d=todosT.get(String(tk).toUpperCase());   // V163: fixos (definidos na folha Compra do Excel)
       if(!d||fixT.has(String(tk).toUpperCase())||!(pc>0))continue;fixT.add(String(tk).toUpperCase());
-      esc_.push({...d,ngc:d.g5??0,fixo:pc});}
+      esc_.push({...d,ngc:d.g5??0,fixo:pc,   // V205: os fixos são sempre compra (limite = preço atual se não houver)
+        dc:'Compra (fixo)',dc0:/^Compra/.test(d.dc||'')?'':(d.dc||''),tm:d.tm??d.p,tmp:d.tm!=null?d.tmp:0});}
     for(const d of lista){
       if(fixT.has(String(d.t||'').toUpperCase()))continue;
       let ng=d.g5;const dc=d.dc||'';   // V204: a nota por ganhos
@@ -6267,7 +6285,7 @@ function calcCompra(){
       return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${d.g5!=null?corG5(d.g5):'#eceff3'}" title="Nota por ganhos (0-5) · em baixo: nota global">${d.g5!=null?num(d.g5,2):'–'}${(d.ng??d.nt)!=null?`<small style="display:block;font-size:10px;font-weight:400;margin-top:1px">global ${num(d.ng??d.nt,1)}</small>`:''}</div>
       <div class="nm"><b>${d.fixo!=null?'📌 ':''}${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}${d.fixo!=null?' <small style="font-weight:400;color:var(--mu)">(fixo)</small>':''}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
       <div class="px">${eur(v)}<span>${num(w*100,1)}% do grupo</span></div></div>
-      <span class="dec" style="background:${corDecF(d)};${dc_(d)}">${esc(d.dc)}</span>
+      <span class="dec" style="background:${corDecF(d)};${dc_(d)}">${esc(d.dc)}${d.dc0?` <small style="font-weight:400">(no painel: ${esc(d.dc0)})</small>`:''}</span>
       <div class="lv3"><div>Preço atual<b>${pr(d.p)} ${esc(d.m)}</b></div><div>Preço compra (Limite)<b class="cmx">${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
       <div>Nº de ações<b>${na==null?'–':num(na,2)}</b></div></div>
       <div class="cbt"><button data-k="nq" data-t="${esc(T(d))}" class="${nq.has(T(d))?'on':''}">Não quero</button><button data-k="nd" data-t="${esc(T(d))}" class="${nd.has(T(d))?'on':''}">Não disponível</button></div></div>`;});
@@ -6622,6 +6640,8 @@ def _ler_cfg_gh():
 
 def _config_github():
     """Lê (ou pergunta, na 1.ª vez) o token e a palavra-passe. None se a publicação estiver desligada."""
+    if not e_dono():                                    # V206: outro utilizador (ex.: Frederico): nada com a app
+        return None
     cfg = _ler_cfg_gh()
     if cfg.get("token") and cfg.get("senha"):           # garante as duas cópias (este PC e a pasta do OneDrive)
         for fich in (FICH_GH_PASTA, FICH_GH):
@@ -8127,11 +8147,11 @@ EVO_L0 = 8                         # 1.ª linha dos dados (a de cima tem os nome
 EVO_NC = 4 + EVO_NM + EVO_NF       # colunas: data, média de todos, compra média (+ a sua média), compra forte (+ a sua média)
 EVO_JM = 2 + EVO_NM                # coluna (relativa) da média das «Compra média»
 EVO_JF = EVO_NC - 1                # coluna (relativa) da média das «Compra forte»
-EVO_V = 2
+EVO_V = 3                        # V206: pela nota por ganhos
 EVO_COR_F, EVO_COR_M, EVO_COR_T = "1E7B34", "A9D18E", "7F7F7F"
 EVO_FIXAS = (("há 5 anos", 60), ("há 3 anos", 36), ("há 1 ano", 12), ("há 6 meses", 6))   # (rótulo, meses)
 EVO_NA = 5                         # datas aleatórias
-EVO_LIM_PADRAO = ((3.95, 3.5), (3.95, 3.5), (4.5, 3.75))   # V155: (forte, média) ações / ETFs com nível de preço / sem nível
+EVO_LIM_PADRAO = ((3.95, 3.5), (3.95, 3.5), (3.95, 3.5))   # V206: nota por ganhos   # V155: (forte, média) ações / ETFs com nível de preço / sem nível
 EVO_LIM_ROT = ("Ações (com nível de preço)", "ETFs (com nível de preço)", "Sem nível de preço")
 EVO_SALTO, EVO_PARADO = 0.40, 20   # V155: cotações suspeitas: ≥ 2 dias com ±40% ou mais, ou ≥ 20 dias seguidos sem mexer
 
@@ -8163,12 +8183,13 @@ def folha_evolucao(wb):
                 "novas em cada geração), o painel calcula a decisão de todos os títulos das folhas Ações e ETFs com as "
                 "regras e pesos atuais, mas só com o que se sabia nesse dia (como na folha Histórico: cotações e, nas "
                 "ações dos EUA e da Europa, os relatórios anuais da SEC e ESEF; sem analistas). Cada gráfico mostra, a partir dessa data (= 100), "
-                f"todos os «Compra forte» (verde escuro, até {EVO_NF}) e as {EVO_NM} «Compra média» de maior nota global "
+                f"todos os «Compra forte» (verde escuro, até {EVO_NF}) e as {EVO_NM} «Compra média» de maior nota por ganhos "
                 "(verde claro), com a média de cada grupo numa linha grossa da mesma cor; «esperar» não entra. A linha cinzenta tracejada é a média de todos os títulos do grupo "
                 "(ações ou ETFs), para comparar. Cotações em euros, com dividendos, escala logarítmica. Atenção: a lista "
                 "é a de hoje (títulos que entraram por terem subido favorecem o resultado) e os fundamentos passados só "
                 "existem para as ações dos EUA (SEC) e da Europa (ESEF, desde 2020). Os ETFs recebem, em cada data, a nota e o nível de preço das suas ações "
-                "(pela composição de hoje), como na tabela: com nível de preço, compra forte a partir de 3,95. Gerar demora alguns minutos (todas as cotações de 12 anos).")
+                "(pela composição de hoje), como na tabela. FORTE / MÉDIA pela NOTA POR GANHOS de cada data (com os parâmetros das folhas "
+                "Ações / ETFs, só com as cotações até essa data; o preço pela distância à tendência). Gerar demora alguns minutos (todas as cotações de 12 anos).")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
     ws.merge_cells("B2:N2")
@@ -8193,7 +8214,7 @@ def folha_evolucao(wb):
             c = ws.cell(4 + i, 10 + j, (lim[i] if i < len(lim) else EVO_LIM_PADRAO[i])[j])
             c.fill, c.number_format = PatternFill("solid", fgColor="FFF2CC"), "0.00"
             c.alignment = Alignment(horizontal="center")
-    ws["L4"] = ("Por omissão os do painel (3,95 / 3,5; sem nível 4,5 / 3,75). Só conta quem tem compra nesse dia "
+    ws["L4"] = ("Nota por ganhos (0-5); por omissão 3,95 / 3,5. Só conta quem tem compra nesse dia "
                 "(sinal ≥ 3, sem «esperar» nem saúde frágil).")
     ws["L4"].font, ws["L4"].alignment = Font(size=8, italic=True, color="595959"), Alignment(wrap_text=True, vertical="top")
     ws.merge_cells("L4:N6")
@@ -8383,13 +8404,21 @@ def calcular_evolucao():
     hold = _sim_etf_hold([por_t[t] for t in cols if tipos[t] == "ETF"], [por_t[t] for t in cols if tipos[t] != "ETF"])
     dec = {}
     notas = _sim_notas_painel(loc, tipos, dias, sec, None, dec, hold)
+    todos_nm = {}                                      # V206: a nota por ganhos de cada data
+    for d_ in linhas:
+        todos_nm.setdefault(txt(d_.get("nome")).strip().lower(), d_)
+    gn = {}
+    for etf_, grp in ((False, "Ação"), (True, "ETF")):
+        lst_ = [por_t[t] for t in cols if tipos[t] == grp]
+        if lst_:
+            print(f"   a calcular a nota por ganhos de {len(lst_)} {'ETFs' if etf_ else 'ações'} em {len(dias)} datas ...")
+            for dia, v_ in g_notas_datas(lst_, todos_nm, etf_, dias).items():
+                for t, n_ in v_.items():
+                    gn[(dia, t)] = n_
 
-    def nota(dia, t):
-        txt_, ng, nv = dec[(dia, t)]
-        if isinstance(ng, (int, float)) and isinstance(nv, (int, float)):
-            return float(ng)
-        v = notas.at[dia, t] if dia in notas.index else None
-        return float(v) if isinstance(v, (int, float)) and pd.notna(v) else 0.0
+    def nota(dia, t):                                  # V206: a nota por ganhos (0-5) nessa data
+        v = gn.get((dia, t))
+        return float(v) if isinstance(v, (int, float)) else 0.0
 
     nome = lambda t: txt(por_t[t].get("codigo")) or t
     empresa = lambda t: txt(por_t[t].get("nome")) or nome(t)      # V154: as séries com o nome da empresa
@@ -8842,8 +8871,12 @@ def calcular_compra():
             tem = e_detido(d.get("det")) or bool(d.get("qtd"))
             linhas.append(["x" if tk.upper() in excluir else "", "x" if tk.upper() in indisp else "",
                            f"📌 {txt(d.get('nome')) or tk} (fixo)", tk, tipo,
-                           round(ng, 2) if isinstance(ng, (int, float)) else None, txt(d.get("decisao")), pr, d.get("teto"),
-                           d.get("teto_pct"), f"=IFERROR(${CFIXP}{r_}/MAX(1,{soma_fx}),0)", f"={CPS}{r_}*{val_g}",
+                           round(ng, 2) if isinstance(ng, (int, float)) else None,
+                           "Compra (fixo" + (f"; no painel: {txt(d.get('decisao')).replace(': esperar', ', esperar')})"
+                                             if txt(d.get("decisao")) and not txt(d.get("decisao")).startswith("Compra")
+                                             else ")"),   # V205: os fixos são sempre compra (ordem ao preço atual
+                           pr, d.get("teto") if isinstance(d.get("teto"), (int, float)) else pr,   # se não houver
+                           d.get("teto_pct") if isinstance(d.get("teto"), (int, float)) else 0.0,   # compra máxima) f"=IFERROR(${CFIXP}{r_}/MAX(1,{soma_fx}),0)", f"={CPS}{r_}*{val_g}",
                            f'=IF(AND(ISNUMBER({CPR}{r_}),ISNUMBER({CFX}{r_}),{CPR}{r_}>0,{CVL}{r_}>0),'
                            f'{CVL}{r_}/({CPR}{r_}*{CFX}{r_}),"")',
                            "★" if tem else "", fx if isinstance(fx, (int, float)) else None, txt(d.get("moeda")),
@@ -8927,12 +8960,16 @@ HIS_CLASSES = (("esperar", "Compra, mas esperar", "8E6BBF"), ("forte", "Compra f
                ("manter", "Manter", "A6A6A6"), ("venda", "Venda", "E06666"))
 
 
-def _his_classe(dec):
+def _his_classe(dec, g5=None):
+    """V206: «esperar» e venda pela decisão; o resto pela nota por ganhos (≥ 3,95 forte, ≥ 3,5 média, ≥ 3 compra)."""
     dec = txt(dec)
     if ": esperar" in dec:
         return "esperar"
     if dec.startswith("Venda"):
         return "venda"
+    if isinstance(g5, (int, float)):
+        return "forte" if g5 >= GERAL_LIM[0] else "media" if g5 >= GERAL_LIM[1] else "compra" if g5 >= GERAL_LIM[2] \
+            else "manter"
     if dec.startswith("Compra forte"):
         return "forte"
     if dec.startswith("Compra média"):
@@ -8961,7 +8998,9 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "já divulgados (10-Q e 10-K), como na tabela. O ÚLTIMO PONTO é a decisão da tabela (com analistas), para bater com ela. "
                 "Período em anos em C4 (=4/52 para 4 semanas); um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
-                "manter, vermelho venda.")
+                "manter, vermelho venda. V206: forte / média / compra / manter vêm da NOTA POR GANHOS de cada data (≥ 3,95 / "
+                "≥ 3,5 / ≥ 3 / abaixo; com os parâmetros das folhas Ações / ETFs, só com as cotações até essa data); "
+                "esperar e venda vêm da decisão.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
     ws.merge_cells("B2:N2")
@@ -9136,6 +9175,26 @@ def calcular_historico():
     print(f"   a calcular a decisão do painel em {len(dias)} pontos (um a cada {passo} dias de bolsa) ({len(sec)} com relatórios da SEC / ESEF) ...")
     dec = {}
     _sim_notas_painel(loc_todos, tipos, dias, sec, None, dec)
+    g5 = {}                                        # V206: a nota por ganhos em cada ponto (numa grelha de até 40
+    todos_nm = {}                                  # datas; entre elas fica a do ponto anterior)
+    for d_ in todas.values():
+        todos_nm.setdefault(txt(d_.get("nome")).strip().lower(), d_)
+    grelha = dias[::max(1, -(-len(dias) // 40))]
+    for etf_ in (False, True):
+        meus = [t for t in tks if t in cols and (tipos[t] == "ETF") == etf_]
+        if not meus:
+            continue
+        grupo = [d_ for t_, d_ in todas.items() if (txt(d_.get("tipo")) == "ETF") == etf_ and t_ == txt(d_.get("ticker")).upper()]
+        grupo += [d for t, d in zip(tks, linhas) if t in meus and all(t != txt(x.get("ticker")).upper() for x in grupo)]
+        print(f"   a calcular a nota por ganhos ({'ETFs' if etf_ else 'ações'}) em {len(grelha)} datas ...")
+        gd = g_notas_datas(grupo, todos_nm, etf_, grelha)
+        for i, dia in enumerate(dias):
+            ant_ = [x for x in grelha if x <= dia and x in gd]
+            for t in meus:
+                g5[(dia, t)] = gd[ant_[-1]].get(t) if ant_ else None
+    for t, d in zip(tks, linhas):                  # último ponto: a nota por ganhos da tabela
+        if t in cols and dias and isinstance(d.get("g_n5"), (int, float)):
+            g5[(dias[-1], t)] = d.get("g_n5")
     for t, d in zip(tks, linhas):                  # último ponto = a decisão da tabela (tem analistas e dados de hoje)
         dt_ = txt(d.get("decisao"))
         if t not in cols or not dias:
@@ -9165,7 +9224,7 @@ def calcular_historico():
             if dcs is None or pd.isna(pr):
                 ant = None
                 continue
-            c = _his_classe(dcs[0])
+            c = _his_classe(dcs[0], g5.get((dia, t)))
             cont[c] += 1
             sc = serie_de(c)
             dados[i][1 + NS * k + ords.index(sc)] = float(pr)
@@ -11388,8 +11447,12 @@ def g_vals_params(blocos):
     return [(lin[0] if isinstance(lin, (list, tuple)) else lin) for bl in blocos for lin in bl]
 
 
-def g_calcular(acoes, todos_nm, p, etf_):
-    """Nota por ganhos de cada título (acoes: dicionários com as colunas do painel). Devolve ({ticker: {g_…}}, texto)."""
+G_PRE = {}                       # V206: cotações já descarregadas (para calcular a nota por ganhos em várias datas)
+
+
+def g_calcular(acoes, todos_nm, p, etf_, pre=None, gravar=True):
+    """Nota por ganhos de cada título (acoes: dicionários com as colunas do painel). Devolve ({ticker: {g_…}}, texto).
+    V206: pre = G_PRE de um cálculo anterior (não descarrega outra vez); gravar=False não muda o último cálculo."""
     import pandas as pd
     from datetime import date as date_, timedelta
     import math
@@ -11404,7 +11467,7 @@ def g_calcular(acoes, todos_nm, p, etf_):
     yf = _yf()
     hist, moedas = {}, {}
     d_ref = todos_nm.get((p.get("ref") or "").strip().lower())
-    for d in acoes + ([d_ref] if d_ref is not None else []):   # cotações da bolsa principal (mais fiáveis)
+    for d in ([] if pre else acoes + ([d_ref] if d_ref is not None else [])):   # cotações da bolsa principal
         t = txt(d.get("ticker")).upper()
         moedas[t] = txt(d.get("moeda")) or "EUR"
         m_ = re.search(r"principal: .* (\S+)$", txt(d.get("bolsa")))
@@ -11432,9 +11495,16 @@ def g_calcular(acoes, todos_nm, p, etf_):
         dref = None
     base = dref.date() if dref is not None else hoje
     ini = base - timedelta(days=int(p["anos"] * 365.25) + 10)
-    print(f"{nome_f}: cotações de {len(acoes)} {p['grupo']} ({p['anos']:.2f} anos"
-          + (f", análise em {dref:%d/%m/%Y}" if dref is not None else "") + ") ...")
-    eur, _ = _sim_cotacoes_eur(sorted(set(hist.values()) | set(hist)), moedas, ini, hoje)
+    if pre:
+        hist, eur = pre["hist"], pre["eur"]
+        for d in acoes:
+            hist.setdefault(txt(d.get("ticker")).upper(), txt(d.get("ticker")).upper())
+    else:
+        print(f"{nome_f}: cotações de {len(acoes)} {p['grupo']} ({p['anos']:.2f} anos"
+              + (f", análise em {dref:%d/%m/%Y}" if dref is not None else "") + ") ...")
+        eur, _ = _sim_cotacoes_eur(sorted(set(hist.values()) | set(hist)), moedas, ini, hoje)
+        G_PRE.clear()
+        G_PRE.update(hist=hist, eur=eur)
     idx_ = eur.dropna(how="all").index
     fim = idx_[idx_ <= dref][-1] if dref is not None and (idx_ <= dref).any() else idx_[-1]
     inicio = pd.Timestamp(fim) - pd.Timedelta(days=int(p["anos"] * 365.25))
@@ -11635,12 +11705,31 @@ def g_calcular(acoes, todos_nm, p, etf_):
     if (p_g.get("meia") or 0) >= 1e5:
         p_g["meia"] = None                             # meia-vida vazia
     p_g["data"] = dref.strftime("%Y-%m-%d") if dref is not None else None
-    _gravar_json(FICH_ALT_G[etf_], {"v": ALT_V, "p": p_g, "cf": res, "gerado": gerado})
-    for l in linhas[:10]:
+    if gravar:
+        _gravar_json(FICH_ALT_G[etf_], {"v": ALT_V, "p": p_g, "cf": res, "gerado": gerado})
+    for l in (linhas[:10] if gravar else []):
         if l[19] is not None:
             print(f"   {l[0]:3d}. {str(l[1])[:30]:30} nota por ganhos {l[19]:4.2f} (rent. {l[4]:+6.1%}, ajustada {l[3]:+6.1%})"
                   f" · fator preço {l[8]:4.2f}")
     return res, gerado
+
+
+def g_notas_datas(grupo, todos_nm, etf_, dias):
+    """V206: nota por ganhos (0-5) de cada título do grupo em cada data passada (só com as cotações até essa data; o
+    preço pela distância à tendência, como na «Data de cálculo»), com os parâmetros da folha. {dia: {ticker: nota}}."""
+    import pandas as pd
+    p0 = g_params(etf_)
+    out, pre = {}, None
+    for dia in sorted(dias):
+        try:
+            res, _ = g_calcular(grupo, todos_nm, dict(p0, data=pd.Timestamp(dia).to_pydatetime()), etf_,
+                                pre=pre, gravar=False)
+        except BaseException as e:
+            print(f"   nota por ganhos em {pd.Timestamp(dia):%d/%m/%Y} não calculada: {e}")
+            continue
+        pre = pre or dict(G_PRE)
+        out[dia] = {t: v.get("g_n5") for t, v in res.items()}
+    return out
 
 
 def _g_todos_nm(tabs):
@@ -12840,7 +12929,7 @@ def acao_do_botao(arg):
     """(chave, descrição) da ação pedida, para a janela de progresso e para a estimativa do tempo."""
     a = arg.lower()
     for chave, padrao, txt_ in (
-            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comprent", "://comprent", "Comparar rentabilidade"), ("cfalt", "://cfalt", "Classificação alternativa"), ("repor", "repor_detidos", "Repor detidos"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"), ("comparar", "comparar", "Comparar notas"),
+            ("reclassificar", "reclassificar", "Reclassificar e reordenar"), ("simular", "simular", "Simulador"), ("compra", "://compra", "Calcular compra"), ("historico", "://historico", "Histórico da classificação"), ("evolucao", "://evolucao", "Evolução das compras"), ("comprent", "://comprent", "Comparar rentabilidade"), ("cfalt", "://cfalt", "Classificação alternativa"), ("repor", "repor_detidos", "Repor detidos"), ("alvojusto", "://alvojusto", "Analistas vs valor justo"),
             ("ordenar", "ordenar", "Ordenar"),
             ("procurar", "procurar", "Procurar"), ("top", "://top", "Mais significativas"),
             ("base", "://base", "Lista base"), ("acrescentar", "acrescentar", "Acrescentar marcados"),
