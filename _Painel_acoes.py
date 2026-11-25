@@ -355,9 +355,9 @@ _LARG = {"preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp"
 COLS = [(k, h, _LARG.get(k, w), f, g) for k, h, w, f, g in COLS]
 # V190: a nota por ganhos (antes nas folhas «nota alternativa») entra nas folhas Ações / ETFs, logo a seguir ao preço
 # noutra moeda (coluna R); a decisão passa para o lado dela
-G_COLS = [("g_nota", "Nota por ganhos (rent. ajustada, %/ano)", 9, "pct", "ganhos")]
-G_COLS2 = [("g_ordem", "Ordem pela nota por ganhos", 6, "int", "ganhos"),
-           ("g_pond", "Ganhos: rent. anual ponderada (%)", 8, "pct", "ganhos"),
+G_COLS = [("g_n5", "Nota por ganhos (0-5: 5 = média das 2 melhores)", 7, "nota", "ganhos"),
+          ("g_nota", "Nota por ganhos (rent. ajustada, %/ano)", 9, "pct", "ganhos")]
+G_COLS2 = [("g_pond", "Ganhos: rent. anual ponderada (%)", 8, "pct", "ganhos"),
            ("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
            ("g_curva", "Ganhos: rent. da curva, compras periódicas até hoje (%)", 8, "pct", "ganhos"),
            ("g_medida", "Ganhos: medida do preço (P/E, nível 1-5 ou × tendência)", 8, "num1", "ganhos"),
@@ -436,8 +436,8 @@ AC_L0 = 5   # linha do cabeçalho da folha Acrescentados
 # "Ordenar por" (lista na linha 3 de cada folha): (texto, chave, maior primeiro?)
 REC_ORDEM = {"strong_buy": 0, "buy": 1, "hold": 2, "underperform": 3, "sell": 4, "strong_sell": 5}
 CRITERIOS_ORD = [
+    ("Nota por ganhos (5 → 0)", "g_n5", True),
     ("Nota global (5 → 0)", "nota_geral", True),
-    ("Nota por ganhos (maior primeiro)", "g_nota", True),
     ("Nota geral, sem o preço (5 → 0)", "nota", True),
     ("Pontuação (5 → 1)", "pont", True),
     ("Detidos (x) primeiro", "det", True),
@@ -464,7 +464,8 @@ CRITERIOS_ORD = [
     ("Recomendação", "rec", False),
     ("Mais abaixo do máx. da semana", "dist0", False),
 ]
-ORD_ANTIGOS = {"Melhor preço com nota ≥ (valor ao lado)": "Melhor preço com nota igual ou maior a (valor ao lado)"}   # nomes antigos da lista «Ordenar por»
+ORD_ANTIGOS = {"Melhor preço com nota ≥ (valor ao lado)": "Melhor preço com nota igual ou maior a (valor ao lado)",
+               "Nota por ganhos (maior primeiro)": "Nota por ganhos (5 → 0)"}   # nomes antigos da lista «Ordenar por»
 ORD_PADRAO = {1: CRITERIOS_ORD[0][0], 2: CRITERIOS_ORD[0][0]}    # as duas folhas: pela nota geral
 # barra de topo (V012): linha 3 = ▶ ATUALIZAR (A:D) · o que atualizar (E:G) · Ordenar por (H, I:L) · ↕ ORDENAR (M:N) ·
 # estado (O); linha 4 = ↻ PREÇOS (A:D) · longo prazo mín. (E:F, G) · Situação em (H, I:J, K); linha 5 = bolsas
@@ -630,7 +631,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V191", "25/11/2026"
+VERSAO, DATA_VERSAO = "V192", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1257,7 +1258,7 @@ def _fmt_cel_base(c, k, fmt):
         c.number_format = '"€"* #,##0.00'
         if k == "valor_eur":
             c.font = Font(bold=True)
-    if k == "g_nota":                             # V190: a nota por ganhos a negrito
+    if k in ("g_nota", "g_n5"):                   # V190: a nota por ganhos a negrito
         c.font = Font(bold=True)
         c.alignment = Alignment(horizontal="center")
     if k in ("bolsa", "horario"):                 # bolsa e horário: letra 9
@@ -3810,8 +3811,8 @@ def compra_espera(d):
     if isinstance(pr, (int, float)) and isinstance(m50, (int, float)) and pr < m50:
         falta.append(f"estabilizar: que o preço volte para cima da média de 50 dias (agora {n2(pr)} < {n2(m50)}, "
                      f"{pr / m50 - 1:+.0%})")
-    if isinstance(pr, (int, float)) and isinstance(teto, (int, float)) and teto > 0 and pr > teto:
-        falta.append("preço até à compra máxima")
+    # V192: a compra máxima é o preço da ordem limite, sempre ~1-2% abaixo do preço (ver niveis): já não conta como
+    # «falta» (contava sempre, e por isso a compra nas descidas nunca chegava a aparecer)
     pre = f"nota {n_conf:.2f} ao confirmar; ".replace(".", ",") if isinstance(n_conf, (int, float)) else ""
     abaixo200 = isinstance(pr, (int, float)) and isinstance(m200, (int, float)) and pr < m200
     if COMPRA_NAS_DESCIDAS and (falta or abaixo200) and all(x.startswith("estabilizar") for x in falta):
@@ -3824,6 +3825,11 @@ def compra_espera(d):
         return f"{NIVEIS[nivel]} (em descida: {', '.join(ds_)}{nc_})"
     if COMPRA_NAS_DESCIDAS:
         falta = [x for x in falta if not x.startswith("estabilizar")] or falta
+    if COMPRA_NAS_DESCIDAS and not falta:
+        # V192: preço acima das médias (ou perto da de 200) e o sinal ainda por confirmar: sem indício forte de que
+        # continue a descer, compra-se
+        nc_ = f"; nota {n_conf:.2f}".replace(".", ",") if isinstance(n_conf, (int, float)) else ""
+        return f"{NIVEIS[nivel]} (sinal ainda a confirmar{nc_})"
     if not falta:
         falta.append("confirmar a subida (sinal ≥ 3)")
     return f"{NIVEIS[nivel]}: esperar ({pre}{'; '.join(falta)})"
@@ -6014,7 +6020,7 @@ main{padding:8px 10px 40px}
 <div class="at" id="at"></div>
 <div class="tabs"><button class="tab on" data-t="A">Ações</button><button class="tab" data-t="E">ETFs</button><button class="tab" data-t="X">Detidos</button><button class="tab" data-t="C">Compra</button><button class="tab" data-t="G">Gráficos</button></div>
 <div class="bar"><input id="q" type="search" placeholder="Procurar nome ou código"><select id="o">
-<option value="ng:d">Nota global (nota geral + preço)</option><option value="gn:d">Nota por ganhos (rent. ajustada, %/ano)</option><option value="nt">Nota geral (sem o preço)</option><option value="bpg">Mais barata primeiro, nota global igual ou maior a…</option><option value="ngp">Melhor nota global, nível de preço igual ou maior a…</option><option value="bp">Melhor preço para comprar</option><option value="bpm">Mais barata primeiro, nota igual ou maior a…</option><option value="ntp">Melhor nota, nível de preço igual ou maior a…</option><option value="pt:d">Pontuação do sinal</option><option value="np:d">Nível de preço (mais barata primeiro)</option><option value="q:d">Qualidade</option><option value="s:d">Saúde financeira</option><option value="o.pot:d">Analistas (alvo / preço)</option><option value="o.justo_pct:d">Valor justo / preço</option><option value="be:a">Beta (mais defensivas primeiro)</option><option value="be:d">Beta (mais voláteis primeiro)</option><option value="o.var1d:d">Subida no último dia</option><option value="o.var1m:d">Subida no último mês</option><option value="o.val_sempre:d">Valorização desde sempre</option><option value="o.val10:d">Valorização 10 anos</option><option value="o.val5:d">Valorização 5 anos</option><option value="o.val3:d">Valorização 3 anos</option><option value="o.val1:d">Valorização 1 ano</option><option value="o.dist0:a">Mais abaixo do máx. da semana</option><option value="vd">Valor detido</option><option value="tmp">Compra máx. mais perto</option><option value="n">Nome</option></select></div><div id="nmb"><span id="nml">Nota geral igual ou maior a</span><input id="nm" type="text" inputmode="decimal" value="4"><span id="nmc" style="opacity:.8"></span></div>
+<option value="g5:d">Nota por ganhos (0-5)</option><option value="ng:d">Nota global (nota geral + preço)</option><option value="nt">Nota geral (sem o preço)</option><option value="bpg">Mais barata primeiro, nota global igual ou maior a…</option><option value="ngp">Melhor nota global, nível de preço igual ou maior a…</option><option value="bp">Melhor preço para comprar</option><option value="bpm">Mais barata primeiro, nota igual ou maior a…</option><option value="ntp">Melhor nota, nível de preço igual ou maior a…</option><option value="pt:d">Pontuação do sinal</option><option value="np:d">Nível de preço (mais barata primeiro)</option><option value="q:d">Qualidade</option><option value="s:d">Saúde financeira</option><option value="o.pot:d">Analistas (alvo / preço)</option><option value="o.justo_pct:d">Valor justo / preço</option><option value="be:a">Beta (mais defensivas primeiro)</option><option value="be:d">Beta (mais voláteis primeiro)</option><option value="o.var1d:d">Subida no último dia</option><option value="o.var1m:d">Subida no último mês</option><option value="o.val_sempre:d">Valorização desde sempre</option><option value="o.val10:d">Valorização 10 anos</option><option value="o.val5:d">Valorização 5 anos</option><option value="o.val3:d">Valorização 3 anos</option><option value="o.val1:d">Valorização 1 ano</option><option value="o.dist0:a">Mais abaixo do máx. da semana</option><option value="vd">Valor detido</option><option value="tmp">Compra máx. mais perto</option><option value="n">Nome</option></select></div><div id="nmb"><span id="nml">Nota geral igual ou maior a</span><input id="nm" type="text" inputmode="decimal" value="4"><span id="nmc" style="opacity:.8"></span></div>
 </header>
 <div id="glob" style="display:none"></div>
 <div id="qd" style="display:none;position:fixed;top:70px;left:8px;right:8px;z-index:20;background:#fffbe6;color:#222;border:1px solid #c9b458;border-radius:12px;padding:10px 34px 10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px;line-height:1.5"><button id="qdx" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border:0;border-radius:50%;background:#d93025;color:#fff;font-weight:700">✕</button><div id="qdt"></div></div>
@@ -6118,7 +6124,7 @@ function cartao(d){
   let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${cn};color:${fn}" title="Nota global (nota geral + preço)${d.np!=null?' · nível de preço '+num(d.np,1)+'/5':''}">${NG==null?'–':num(NG,1)}</div>
   <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
-  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.nt!=null&&d.ng!=null?` <span class="dec" style="background:${cor(d.nt)}" title="Nota geral: negócio, tendência e momento, sem o preço">geral ${num(d.nt,1)}</span>`:''}${d.gn!=null?` <span class="dec" style="background:${d.gn>=0.15?'#63BE7B':d.gn>=0.08?'#C6E5B3':d.gn>=0?'#FFEB84':'#F8A5A6'}" title="Nota por ganhos: rentabilidade anual ponderada pelo tempo, ajustada ao preço${d.go!=null?' · '+d.go+'.º':''}">ganhos ${d.gn>=0?'+':''}${num(d.gn*100,1)}%</span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
+  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.nt!=null&&d.ng!=null?` <span class="dec" style="background:${cor(d.nt)}" title="Nota geral: negócio, tendência e momento, sem o preço">geral ${num(d.nt,1)}</span>`:''}${d.g5!=null?` <span class="dec" style="background:${d.g5>=3.95?'#63BE7B':d.g5>=3.5?'#A9D18E':d.g5>=3?'#E2EFDA':d.g5>=2.25?'#F4B183':d.g5>=1.5?'#FFEB9C':'#F8696B'}" title="Nota por ganhos (0-5): rentabilidade anual ponderada pelo tempo, ajustada ao preço">ganhos ${num(d.g5,1)}${d.gn!=null?' <small style="font-size:80%;font-weight:normal">('+(d.gn>=0?'+':'')+num(d.gn*100,1)+'%/ano)</small>':''}</span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
   <div>Valor total<b>${d.vd!=null?eur(d.vd):'–'}${d.lpp!=null?` <span style="color:${d.lpp>=0?'#1e8e3e':'#d93025'}">(${pct2(d.lpp)})</span>`:''}</b></div>
   <div>Lucro / prejuízo<b>${d.le!=null?`<span style="color:${d.le>=0?'#1e8e3e':'#d93025'}">${d.le>=0?'+':'−'}${eur(Math.abs(d.le))}</span>`:'–'}</b></div></div>`:''}
   <div class="lv"><div class="rt">Compra</div><div>Preço compra (Limite)<b>${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -6854,7 +6860,7 @@ def pagina_html(linhas, etfs, texto):
     def item(d):
         return {"n": txt(d.get("nome")), "c": txt(d.get("codigo")), "t": txt(d.get("ticker")), "m": txt(d.get("moeda")),
                 "p": num(d.get("preco")), "nt": num(d.get("nota")), "ng": num(d.get("nota_geral")), "dc": txt(d.get("decisao")), "pt": num(d.get("pont")),
-                "gn": num(d.get("g_nota")), "go": num(d.get("g_ordem")),
+                "gn": num(d.get("g_nota")), "g5": num(d.get("g_n5")),
                 "np": num(d.get("nivel_preco")), "be": num(d.get("beta")), "pr": num(d.get("pe")), "ca": 1 if d.get("so_caro") == 1 else 0,
                 "nr": rotulo_nivel(d.get("nivel_preco")) or None,
                 "nc": "#" + COR_NIVEL[rotulo_nivel(d.get("nivel_preco"))] if rotulo_nivel(d.get("nivel_preco")) else None,
@@ -11068,7 +11074,7 @@ def calcular_comp_rent():
 
 # ======================================================= Ações-CFAlt (V171): classificação alternativa das ações
 FICH_ALT_G = {False: os.path.join(PASTA, BASE + "_cfalt_acoes.json"), True: os.path.join(PASTA, BASE + "_cfalt_etfs.json")}
-ALT_V = 8                          # muda -> os parâmetros voltam aos aconselhados uma vez
+ALT_V = 9                          # muda -> os parâmetros voltam aos aconselhados uma vez
 ALT_METODOS = ("P/E (sem ele: nível; sem ele: tendência)", "Nível do painel (sem ele: tendência)", "Nível do painel",
                "Distância à tendência", "P/E")
 ALT_BASES = ("Ponderada mensal", "Curva da Comp Rent (compras periódicas até hoje)")   # V178
@@ -11083,9 +11089,8 @@ ALT_PAR = (("met", "Medida do preço", "@"), ("base", "Base da nota", "@"), ("re
            ("m", "Raiz do fator preço (m)", "0.0"), ("n", "Raiz do fator volatilidade (n)", "0.0"),
            ("pe_ref", "P/E de referência (fator 1)", "0.0"), ("pe_max", "P/E máximo (sem lucros: este)", "0"),
            ("pe_min", "P/E mínimo (abaixo: este)", "0.0"), ("vol_ref", "Volat. de referência (abaixo: 1)", "0%"),
-           ("vol_pond", "Volatilidade ponderada (x)", "@"), ("hmin", "Histórico mínimo (anos)", "0.0"),
-           ("verde", "Verde a partir de (%/ano)", "0.0%"))
-ALT_TAB = ((16, 19), (21, 26))     # (1.ª coluna do rótulo, coluna do valor): P-R → S:T e U-Y → Z:AA
+           ("vol_pond", "Volatilidade ponderada (x)", "@"), ("hmin", "Histórico mínimo (anos)", "0.0"))
+ALT_TAB = ((16, 19, 21), (22, 26, 28))   # (rótulo de, valor de, valor até): P-R → S:U e V-Y → Z:AB
 G_C_GER = "E6"                     # «Calculado em …» (E6:O7)
 
 
@@ -11119,46 +11124,46 @@ def g_params(etf):
 
 
 def g_topo(wb, ws, etf):
-    """V190: na folha Ações / ETFs, linhas 6-9 (à esquerda) o ▶ CALCULAR e o estado; linhas 1-9 (à direita) as 2
-    tabelas de parâmetros da nota por ganhos. Também as cores da coluna da nota."""
+    """V190/V192: na folha Ações / ETFs, linhas 6-8 (à esquerda) o estado da nota por ganhos e o ↺ REPOR DETIDOS;
+    linhas 1-9 (à direita) as 2 tabelas de parâmetros. Também as cores das colunas da nota por ganhos."""
     from openpyxl.worksheet.datavalidation import DataValidation as DV_
-    from openpyxl.formatting.rule import ColorScaleRule
+    from openpyxl.formatting.rule import FormulaRule
     g = _ler_json(FICH_ALT_G[etf], {})
     p = g_params(etf)
     amarelo = PatternFill("solid", fgColor="FFF2CC")
-    fina = Side(style="thin", color="BFBFBF")
-    borda = Border(left=fina, right=fina, top=fina, bottom=fina)
+    cinza = PatternFill("solid", fgColor="F2F2F2")
+    fina, grossa = Side(style="thin", color="A6A6A6"), Side(style="medium", color="595959")
     let = get_column_letter
-    idx = 2 if etf else 1
-    ws.merge_cells("A6:D7")
-    botao(ws, "A6", "▶ CALCULAR GANHOS", f"{PROTOCOLO}://cfalt/{'etfs' if etf else 'acoes'}", "375623",
-          "203414", 10)
-    ws["A6"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.merge_cells("A8:D8")
-    botao(ws, "A8", "↺ REPOR DETIDOS (cópia)", f"{PROTOCOLO}://repor_detidos", "7030A0", "4B2070", 9)
+    ws.merge_cells("A6:D6")
+    botao(ws, "A6", "↺ REPOR DETIDOS (cópia)", f"{PROTOCOLO}://repor_detidos", "7030A0", "4B2070", 9)
     ws.merge_cells("E6:O7")
-    ws[G_C_GER] = g.get("gerado") or ("Nota por ganhos ainda não calculada: ▶ CALCULAR NOTA POR GANHOS (ou ▶ ATUALIZAR, "
-                                      "que também a calcula).")
+    ws[G_C_GER] = g.get("gerado") or "Nota por ganhos: calcula-se em cada ▶ ATUALIZAR (ações, ETFs ou tudo)."
     ws[G_C_GER].font = Font(size=9, color="7030A0")
     ws[G_C_GER].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells("E8:O9")
-    ws["E8"] = ("NOTA POR GANHOS = rentabilidade anual ponderada pelo tempo (euros, com dividendos) ÷ fator do preço "
-                "[÷ fator da volatilidade] [× qualidade + saúde]. Ordena-se no «Ordenar por» (Nota por ganhos). "
-                "Explicação completa no fim da tabela.")
-    ws["E8"].font = Font(italic=True, size=8, color="595959")
-    ws["E8"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells("A8:O9")
+    ws["A8"] = ("NOTA POR GANHOS = rentabilidade anual ponderada pelo tempo (euros, com dividendos) ÷ fator do preço "
+                "[÷ fator da volatilidade] [× qualidade + saúde]; a nota 0-5 é proporcional (5 = média das 2 melhores). "
+                "Calcula-se em cada ▶ ATUALIZAR. Explicação completa no fim da tabela.")
+    ws["A8"].font = Font(italic=True, size=8, color="595959")
+    ws["A8"].alignment = Alignment(wrap_text=True, vertical="top")
     for i, (k, rot, fm) in enumerate(ALT_PAR):
         r, cv = _alt_cel(k)
-        c0 = ALT_TAB[i // 9][0]
+        c0, _, cf_ = ALT_TAB[i // 9]
         ws.merge_cells(start_row=r, start_column=c0, end_row=r, end_column=cv - 1)
         c = ws.cell(r, c0, rot + _alt_aconselhado(k))
-        c.font = Font(bold=True, size=8)
+        c.font, c.fill = Font(bold=True, size=9), cinza
         c.alignment = Alignment(horizontal="right", vertical="center", shrink_to_fit=True)
-        ws.merge_cells(start_row=r, start_column=cv, end_row=r, end_column=cv + 1)
+        ws.merge_cells(start_row=r, start_column=cv, end_row=r, end_column=cf_)
         c = ws.cell(r, cv, p.get(k))
-        c.fill, c.border, c.number_format = amarelo, borda, fm
-        c.font = Font(bold=True, size=8)
+        c.fill, c.number_format = amarelo, fm
+        c.font = Font(bold=True, size=9)
         c.alignment = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
+    for t_, (c0, cv, cf_) in enumerate(ALT_TAB):        # molduras: linhas finas, contorno grosso
+        n_lin = len([1 for i in range(len(ALT_PAR)) if i // 9 == t_])
+        for r in range(1, n_lin + 1):
+            for c_ in range(c0, cf_ + 1):
+                ws.cell(r, c_).border = Border(left=grossa if c_ == c0 else fina, right=grossa if c_ == cf_ else fina,
+                                               top=grossa if r == 1 else fina, bottom=grossa if r == n_lin else fina)
     for cel_ in (C_AT, C_ORD_EST, C_PRECOS_EST):           # textos de estado na coluna O: em 2 linhas (à direita
         ws[cel_].alignment = Alignment(wrap_text=True, vertical="center")   # estão os parâmetros)
         ws[cel_].font = Font(italic=True, size=7, color="595959")
@@ -11183,7 +11188,8 @@ def g_topo(wb, ws, etf):
     while txt(ws.cell(ult_ + 1, COL["ticker"]).value):
         ult_ += 1
     ws.cell(ult_ + 4, 1, (
-        "NOTA POR GANHOS (colunas S e U a AF) = rentabilidade anual ponderada pelo tempo ÷ fator do preço [÷ fator da "
+        "NOTA POR GANHOS (colunas S-T e V-AF; a nota 0-5 é proporcional: 5 = média das 2 melhores, nunca abaixo de 0 nem "
+        "acima de 5; cores como as da nota global) = rentabilidade anual ponderada pelo tempo ÷ fator do preço [÷ fator da "
         "volatilidade] [× peso da qualidade e saúde]. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL "
         "(rentabilidades mensais da extensão escolhida, cada mês com metade do peso do mês «meia-vida» anos mais recente; a "
         "mesma da Comp Rent Títulos) ou CURVA DA COMP RENT (o que se ganhava por ano comprando de X em X dias de bolsa e "
@@ -11193,17 +11199,17 @@ def g_topo(wb, ws, etf):
         "VOLATILIDADE (com n): (vol ÷ referência)^(1/n), nunca menos de 1 (só penaliza). QUALIDADE + SAÚDE (com k): × (média ÷ "
         "3)^(1/k); nos ETFs, a nota global. Rentabilidade negativa: os fatores multiplicam. Sem nota (com o motivo nas "
         "observações): histórico curto, cotações suspeitas ou que não batem com a valorização desta folha. DATA DE CÁLCULO "
-        "passada: só com as cotações até essa data e as colunas «real desde a data» mostram o que aconteceu. ▶ CALCULAR NOTA "
-        "POR GANHOS escreve as colunas sem mexer nas linhas (se a folha estiver ordenada pela nota por ganhos, reordena); "
-        "o ▶ ATUALIZAR também a calcula. TESTE (180 ações e 36 ETFs, 2008-2025): sinal fraco mas real a 3 anos; volatilidade "
+        "passada: só com as cotações até essa data e as colunas «real desde a data» mostram o que aconteceu. Calcula-se em "
+        "cada ▶ ATUALIZAR. TESTE (180 ações e 36 ETFs, 2008-2025): sinal fraco mas real a 3 anos; volatilidade "
         "e tendência não acrescentaram. É baseada no passado: não garante o futuro."))
     ws.cell(ult_ + 4, 1).font = Font(italic=True, size=9, color="595959")
-    rv, cv = _alt_cel("verde")
-    cg = let(COL["g_nota"])
-    rng = f"{cg}{L0 + 1}:{cg}{L0 + MAX_LINHAS}"
-    ws.conditional_formatting.add(rng, ColorScaleRule(
-        start_type="min", start_color="F8696B", mid_type="formula", mid_value=f"(MIN({rng})+${let(cv)}${rv})/2",
-        mid_color="FFEB84", end_type="formula", end_value=f"${let(cv)}${rv}", end_color="63BE7B"))
+    c5 = let(COL["g_n5"])
+    for lim, cor in ((GERAL_LIM[0], "63BE7B"), (GERAL_LIM[1], "A9D18E"), (GERAL_LIM[2], "E2EFDA"), (2.25, "F4B183"),
+                     (1.5, "FFEB9C"), (-99, "F8696B")):
+        ws.conditional_formatting.add(
+            f"{c5}{L0 + 1}:{let(COL['g_nota'])}{L0 + MAX_LINHAS}",
+            FormulaRule(formula=[f"AND(ISNUMBER(${c5}{L0 + 1}),${c5}{L0 + 1}>={lim})"],
+                        fill=PatternFill("solid", bgColor=cor), font=Font(bold=True), stopIfTrue=True))
 
 
 def g_juntar(dados, etf):
@@ -11292,14 +11298,12 @@ def g_ler_params(vals):
             p[k] = v_ if v_ is not None and v_ > 0 else ALT_PADRAO[k]
     if p["vol_ref"] > 1.5:
         p["vol_ref"] /= 100
-    if p["verde"] > 1.5:
-        p["verde"] /= 100
     return p
 
 
 def g_ops_params(idx):
     """Leituras das 2 tabelas de parâmetros (9 linhas cada) da folha idx."""
-    return [{"op": "ler", "folha": idx, "rng": f"{get_column_letter(cv)}1:{get_column_letter(cv)}9"} for _, cv in ALT_TAB]
+    return [{"op": "ler", "folha": idx, "rng": f"{get_column_letter(cv)}1:{get_column_letter(cv)}9"} for _, cv, _ in ALT_TAB]
 
 
 def g_vals_params(blocos):
@@ -11526,8 +11530,13 @@ def g_calcular(acoes, todos_nm, p, etf_):
             gerado += (f" · ANÁLISE EM {fim:%d/%m/%Y}: desde então, o terço de cima variou {cima:+.0%} e o de baixo "
                        f"{baixo:+.0%} (medianas); correlação nota × real {rho:+.2f}")
     res = {}
+    melhores = sorted((l[3] for l in linhas if isinstance(l[3], float) and l[3] > 0), reverse=True)[:2]
+    ref5 = sum(melhores) / len(melhores) if melhores else None          # V192: 5 = média das 2 melhores
+    n5_ = lambda v: round(max(0.0, min(5.0, 5 * v / ref5)), 2) if isinstance(v, float) and ref5 else None
+    if ref5:
+        gerado += f" · nota 5 = {ref5:+.1%}/ano (média das 2 melhores)"
     for l in linhas:
-        res[l[2]] = {"g_ordem": l[0], "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
+        res[l[2]] = {"g_n5": n5_(l[3]), "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
                      "g_curva": rnd(curvas_.get(l[2])), "g_medida": rnd(l[6]), "g_vol": rnd(l[7]),
                      "g_fpreco": rnd(l[8]), "g_fvol": rnd(l[9]), "g_ref": rnd(l[16]), "g_real_t": rnd(l[14]),
                      "g_real_a": rnd(l[15]), "g_obs": l[17]}
@@ -11576,11 +11585,11 @@ def calcular_alt(etf_=False):
     n = 0
     while n < len(tks) and tks[n]:
         n += 1
-    c1, c2a, c2b = COL["g_nota"], COL[G_COLS2[0][0]], COL[G_COLS2[-1][0]]
-    v1 = [[(res.get(t) or {}).get("g_nota")] for t in tks[:n]]
+    c1, c1b, c2a, c2b = COL["g_n5"], COL["g_nota"], COL[G_COLS2[0][0]], COL[G_COLS2[-1][0]]
+    v1 = [[(res.get(t) or {}).get("g_n5"), (res.get(t) or {}).get("g_nota")] for t in tks[:n]]
     v2 = [[(res.get(t) or {}).get(k) for k, *_ in G_COLS2] for t in tks[:n]]
     L = get_column_letter
-    com_filtros(ex, [{"op": "escrever", "folha": idx, "rng": f"{L(c1)}{L0 + 1}:{L(c1)}{L0 + n}", "valores": v1},
+    com_filtros(ex, [{"op": "escrever", "folha": idx, "rng": f"{L(c1)}{L0 + 1}:{L(c1b)}{L0 + n}", "valores": v1},
                      {"op": "escrever", "folha": idx, "rng": f"{L(c2a)}{L0 + 1}:{L(c2b)}{L0 + n}", "valores": v2},
                      {"op": "escrever", "folha": idx, "rng": G_C_GER, "valores": [[gerado]]}], [idx])
     print(f"{FOLHA_E2 if etf_ else FOLHA_A2}: nota por ganhos escrita em {n} linhas.")
