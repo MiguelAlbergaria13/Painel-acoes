@@ -355,7 +355,7 @@ _LARG = {"preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp"
 COLS = [(k, h, _LARG.get(k, w), f, g) for k, h, w, f, g in COLS]
 # V190: a nota por ganhos (antes nas folhas «nota alternativa») entra nas folhas Ações / ETFs, logo a seguir ao preço
 # noutra moeda (coluna R); a decisão passa para o lado dela
-G_COLS = [("g_n5", "Nota por ganhos (0-5: 5 = média das 2 melhores)", 7, "nota", "ganhos"),
+G_COLS = [("g_n5", "Nota por ganhos (0-5: 5 = 25% da melhor + 75% da 2.ª)", 7, "nota", "ganhos"),
           ("g_nota", "Nota por ganhos (rent. ajustada, %/ano)", 9, "pct", "ganhos")]
 G_COLS2 = [("g_pond", "Ganhos: rent. anual ponderada (%)", 8, "pct", "ganhos"),
            ("g_simples", "Ganhos: rent. anual simples (%)", 8, "pct", "ganhos"),
@@ -631,7 +631,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V192", "25/11/2026"
+VERSAO, DATA_VERSAO = "V193", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1582,6 +1582,10 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
     ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
         formula=[f'ISNUMBER(SEARCH("saúde frágil",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="F8CBAD"),
         font=Font(color="C00000", bold=True), stopIfTrue=True))
+    for txt_, cor_, b_ in (("Compra forte", "63BE7B", True), ("Compra média", "A9D18E", False), ("Compra", "E2EFDA", False)):
+        ws.conditional_formatting.add(faixa("decisao"), FormulaRule(   # V193: compra (também em descida): verdes
+            formula=[f'LEFT({dc}{L0+1},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor_),
+            font=Font(bold=b_), stopIfTrue=True))
     gl, pl = let(COL["nota"]), let(COL["pont"])
     ws.conditional_formatting.add(faixa("decisao"), FormulaRule(       # decisão: venda pelo sinal a vermelho
         formula=[f"${pl}{L0+1}=1"], fill=PatternFill("solid", bgColor="F8696B"), font=Font(bold=True), stopIfTrue=True))
@@ -6117,7 +6121,7 @@ const eur=v=>'€ '+num(v,2);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function cartao(d){
   const dc=d.dc||'';
-  const corDec=d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
+  const corDec=(dc.startsWith('Compra')&&!dc.includes(': esperar'))?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
   const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v):cor(v);   // nota global (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
@@ -11142,7 +11146,7 @@ def g_topo(wb, ws, etf):
     ws[G_C_GER].alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells("A8:O9")
     ws["A8"] = ("NOTA POR GANHOS = rentabilidade anual ponderada pelo tempo (euros, com dividendos) ÷ fator do preço "
-                "[÷ fator da volatilidade] [× qualidade + saúde]; a nota 0-5 é proporcional (5 = média das 2 melhores). "
+                "[÷ fator da volatilidade] [× qualidade + saúde]; a nota 0-5 é proporcional (5 = 25% da melhor + 75% da 2.ª). "
                 "Calcula-se em cada ▶ ATUALIZAR. Explicação completa no fim da tabela.")
     ws["A8"].font = Font(italic=True, size=8, color="595959")
     ws["A8"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -11188,7 +11192,7 @@ def g_topo(wb, ws, etf):
     while txt(ws.cell(ult_ + 1, COL["ticker"]).value):
         ult_ += 1
     ws.cell(ult_ + 4, 1, (
-        "NOTA POR GANHOS (colunas S-T e V-AF; a nota 0-5 é proporcional: 5 = média das 2 melhores, nunca abaixo de 0 nem "
+        "NOTA POR GANHOS (colunas S-T e V-AF; a nota 0-5 é proporcional: 5 = 25% da melhor + 75% da 2.ª, nunca abaixo de 0 nem "
         "acima de 5; cores como as da nota global) = rentabilidade anual ponderada pelo tempo ÷ fator do preço [÷ fator da "
         "volatilidade] [× peso da qualidade e saúde]. Rentabilidade (euros, com dividendos), à escolha: PONDERADA MENSAL "
         "(rentabilidades mensais da extensão escolhida, cada mês com metade do peso do mês «meia-vida» anos mais recente; a "
@@ -11531,10 +11535,11 @@ def g_calcular(acoes, todos_nm, p, etf_):
                        f"{baixo:+.0%} (medianas); correlação nota × real {rho:+.2f}")
     res = {}
     melhores = sorted((l[3] for l in linhas if isinstance(l[3], float) and l[3] > 0), reverse=True)[:2]
-    ref5 = sum(melhores) / len(melhores) if melhores else None          # V192: 5 = média das 2 melhores
+    ref5 = (0.25 * melhores[0] + 0.75 * melhores[1] if len(melhores) == 2 else melhores[0] if melhores
+            else None)                                                   # V193: 5 = 25% da 1.ª + 75% da 2.ª
     n5_ = lambda v: round(max(0.0, min(5.0, 5 * v / ref5)), 2) if isinstance(v, float) and ref5 else None
     if ref5:
-        gerado += f" · nota 5 = {ref5:+.1%}/ano (média das 2 melhores)"
+        gerado += f" · nota 5 = {ref5:+.1%}/ano (25% da melhor + 75% da 2.ª)"
     for l in linhas:
         res[l[2]] = {"g_n5": n5_(l[3]), "g_nota": rnd(l[3]), "g_pond": rnd(l[4]), "g_simples": rnd(l[5]),
                      "g_curva": rnd(curvas_.get(l[2])), "g_medida": rnd(l[6]), "g_vol": rnd(l[7]),
