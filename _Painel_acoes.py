@@ -607,7 +607,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V187", "25/11/2026"
+VERSAO, DATA_VERSAO = "V189", "25/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -3740,6 +3740,7 @@ def sobre_compra(d):
 GERAL_LIM = (3.95, 3.5, 3.0)
 LIM_ACOES = GERAL_LIM          # ações: nota global (com o nível de preço) -> compra forte / média / compra
 LIM_ETFS = (4.5, 3.75, 2.75)   # ETFs e ações sem nível de preço: a nota global é a nota geral (escala não comprimida)
+COMPRA_NAS_DESCIDAS = True    # V189: abaixo só da média de 50 dias já não é motivo para esperar
 COR_ESPERA = "D9C3E9"          # «Compra …: esperar (…)»: lilás (o azul já é «cara»)     # nota global: compra forte / média / compra (a média com o preço puxa para o meio)
 
 
@@ -3767,15 +3768,26 @@ def compra_espera(d):
     pr = d.get("preco") if isinstance(d.get("preco"), (int, float)) else d.get("_preco_sinal")
     m50, teto, m200 = d.get("mm50"), d.get("teto"), d.get("mm200c")
     falta = []
+    n2 = lambda v: f"{v:,.2f}".replace(",", " ").replace(".", ",")
     if isinstance(pr, (int, float)) and isinstance(m200, (int, float)) and pr < m200:
-        falta.append("recuperar: preço acima da média 200")
+        falta.append(f"recuperar: que o preço volte para cima da média de 200 dias (agora {n2(pr)} < {n2(m200)}, "
+                     f"{pr / m200 - 1:+.0%})")
     if isinstance(pr, (int, float)) and isinstance(m50, (int, float)) and pr < m50:
-        falta.append("estabilizar: preço acima da média 50 dias")
+        falta.append(f"estabilizar: que o preço volte para cima da média de 50 dias (agora {n2(pr)} < {n2(m50)}, "
+                     f"{pr / m50 - 1:+.0%})")
     if isinstance(pr, (int, float)) and isinstance(teto, (int, float)) and teto > 0 and pr > teto:
         falta.append("preço até à compra máxima")
+    pre = f"nota {n_conf:.2f} ao confirmar; ".replace(".", ",") if isinstance(n_conf, (int, float)) else ""
+    if COMPRA_NAS_DESCIDAS and falta and all(x.startswith("estabilizar") for x in falta):
+        # V189: só abaixo da média de 50 dias (acima da de 200 e abaixo da compra máxima) = descida numa empresa boa:
+        # compra-se (teste 2002-2025, 191 ações, 3 223 descidas: comprar logo rendeu +11,6% a 1 ano contra +9,0% à
+        # espera de voltar acima da média 50, com os casos maus iguais)
+        nc_ = f"; nota {n_conf:.2f}".replace(".", ",") if isinstance(n_conf, (int, float)) else ""
+        return f"{NIVEIS[nivel]} (em descida: {pr / m50 - 1:+.0%} face à média de 50 dias{nc_})"
+    if COMPRA_NAS_DESCIDAS:
+        falta = [x for x in falta if not x.startswith("estabilizar")] or falta
     if not falta:
         falta.append("confirmar a subida (sinal ≥ 3)")
-    pre = f"nota {n_conf:.2f} ao confirmar; ".replace(".", ",") if isinstance(n_conf, (int, float)) else ""
     return f"{NIVEIS[nivel]}: esperar ({pre}{'; '.join(falta)})"
 
 
@@ -11135,7 +11147,7 @@ def _alt_base_vals(d, r):
 
 
 # V181: botões e escolhas das folhas base, também nas folhas da nota alternativa (colunas AA-AI, linhas 3-9)
-ALT_C_SEL, ALT_C_SELV, ALT_C_LP, ALT_C_AT = "AE3", "AH3", "AE4", "AC6"
+ALT_C_SEL, ALT_C_SELV, ALT_C_LP, ALT_C_AT = "AE3", "AG3", "AE4", "AC5"     # V188: mais juntos
 
 
 def folha_alt(wb, etf, dados, estado=None, atualizado=None):
@@ -11186,33 +11198,28 @@ def folha_alt(wb, etf, dados, estado=None, atualizado=None):
         ws.add_data_validation(dv_)
         r_, c_ = _alt_cel(k_)
         dv_.add(f"{let(c_)}{r_}")
-    ws.merge_cells("S1:V1")
-    botao(ws, "S1", "▶ CALCULAR", f"{PROTOCOLO}://cfalt/{'etfs' if etf else 'acoes'}", "1F4E79", "16365C", 12)
-    ws.row_dimensions[1].height = 24
-    ws["W1"] = "Os filtros mantêm-se depois de calcular. Explicação: no fim da tabela."
-    ws["W1"].font = Font(italic=True, size=9, color="595959")
-    # --- V181: os botões das folhas base (atualizam a folha base E esta) ---
+    # --- V188: à direita dos parâmetros (colunas Z-AI): ▶ CALCULAR e os botões / escolhas das folhas base ---
     est = estado or {}
     g_ = "etfs" if etf else "acoes"
-    for cel_, txt_, lk_, c1_, c2_ in (
-            ("AA3", "▶ ATUALIZAR TUDO", "atualizar/tudo/nova", "1F3B57", "0F2236"),
-            ("AA4", "▶ ATUALIZAR " + ("ETFs" if etf else "AÇÕES"), f"atualizar/{g_}/nova", "00A050", "006E37"),
-            ("AA5", "↻ PREÇOS (rápido)", "precos/nova", "BF8F00", "7F6000"),
-            ("AA7", "▣ VER POSIÇÃO", "posicao", "595959", "3A3A3A"),
-            ("AA9", "↺ REPOR DETIDOS (cópia)", "repor_detidos", "7030A0", "4B2070")):
-        r_ = int(cel_[2:])
-        ws.merge_cells(f"AA{r_}:AB{r_}")
-        botao(ws, cel_, txt_, f"{PROTOCOLO}://{lk_}", c1_, c2_, 10)
-    for cel_, txt_ in (("AC3", "O que atualizar:"), ("AC4", "Longo prazo mín./ano:")):
-        r_ = int(cel_[2:])
+    for r_, txt_, lk_, c1_, c2_ in (
+            (3, "▶ CALCULAR (esta folha)", f"cfalt/{g_}", "375623", "203414"),
+            (4, "▶ ATUALIZAR TUDO", "atualizar/tudo/nova", "1F3B57", "0F2236"),
+            (5, "▶ ATUALIZAR " + ("ETFs" if etf else "AÇÕES"), f"atualizar/{g_}/nova", "00A050", "006E37"),
+            (6, "↻ PREÇOS (rápido)", "precos/nova", "BF8F00", "7F6000"),
+            (7, "▣ VER POSIÇÃO", "posicao", "595959", "3A3A3A"),
+            (8, "↺ REPOR DETIDOS (cópia)", "repor_detidos", "7030A0", "4B2070")):
+        ws.merge_cells(f"Z{r_}:AB{r_}")
+        botao(ws, f"Z{r_}", txt_, f"{PROTOCOLO}://{lk_}", c1_, c2_, 10)
+    for r_, txt_ in ((3, "O que atualizar:"), (4, "Longo prazo mín./ano:")):
         ws.merge_cells(f"AC{r_}:AD{r_}")
-        ws[cel_] = txt_
-        ws[cel_].font, ws[cel_].alignment = Font(bold=True, size=9), Alignment(horizontal="right", vertical="center")
+        ws[f"AC{r_}"] = txt_
+        ws[f"AC{r_}"].font = Font(bold=True, size=9)
+        ws[f"AC{r_}"].alignment = Alignment(horizontal="right", vertical="center")
     sel0 = est.get("sel_e" if etf else "sel") or SELECOES[0]
     val0 = None
     if sel0.startswith("NG ≥ ") and sel0 != SELECOES[2]:
         val0, sel0 = float(sel0.split("≥")[1]), SELECOES[2]
-    ws.merge_cells("AE3:AG3")
+    ws.merge_cells("AE3:AF3")
     for cel_, v_, fm_ in ((ALT_C_SEL, sel0, "@"), (ALT_C_SELV, val0, "0.0#"),
                           (ALT_C_LP, est.get("lp_min", LP_MIN), "0.0%")):
         c = ws[cel_]
@@ -11222,17 +11229,18 @@ def folha_alt(wb, etf, dados, estado=None, atualizado=None):
     dvs_ = DV_(type="list", formula1='"' + ",".join(SELECOES) + '"', allow_blank=False)
     ws.add_data_validation(dvs_)
     dvs_.add(ALT_C_SEL)
-    ws.merge_cells("AC6:AI6")
+    ws.merge_cells("AC5:AI5")
     if isinstance(atualizado, (tuple, list)):          # (texto das ações, texto dos ETFs)
         atualizado = atualizado[1 if etf and len(atualizado) > 1 else 0]
     ws[ALT_C_AT] = "Painel: " + txt(atualizado)
     ws[ALT_C_AT].font = Font(italic=True, size=9, color="595959")
-    ws["AC7"] = ("Os botões desta folha atualizam a folha " + (FOLHA_E2 if etf else FOLHA_A2) + " e depois esta "
-                 "(▶ ATUALIZAR: também o ▶ CALCULAR). Colunas A, B, C, D e H (atualizar, detido, nº, preço de compra, "
-                 "corretora): muda-as aqui; passam para a " + (FOLHA_E2 if etf else FOLHA_A2) + " ao carregar nestes botões.")
-    ws.merge_cells("AC7:AI9")
-    ws["AC7"].font = Font(italic=True, size=8, color="595959")
-    ws["AC7"].alignment = Alignment(wrap_text=True, vertical="top")
+    f2_ = FOLHA_E2 if etf else FOLHA_A2
+    ws["AC6"] = ("▶ ATUALIZAR / ↻ PREÇOS: atualizam a folha " + f2_ + " e depois esta (o ATUALIZAR também faz o ▶ "
+                 "CALCULAR). Os teus títulos (detido, nº de ações, preço de compra, corretora) mudam-se na folha " + f2_
+                 + "; aqui as colunas A-R são só uma cópia dela. Os filtros mantêm-se. Explicação: no fim da tabela.")
+    ws.merge_cells("AC6:AI9")
+    ws["AC6"].font = Font(italic=True, size=8, color="595959")
+    ws["AC6"].alignment = Alignment(wrap_text=True, vertical="top")
     # --- cabeçalho: A-R como na folha base; depois, a nota alternativa ---
     cabs = (CAB_ETFS if etf else CAB_RANK)[:ALT_NB]
     larguras = [largura(w, fmt) for (_, _, w, fmt, _) in COLS[:ALT_NB]]
@@ -11358,7 +11366,7 @@ def folha_alt(wb, etf, dados, estado=None, atualizado=None):
         "data» mostram o que aconteceu depois. TESTE (180 ações e 36 ETFs, 2008-2025): a rentabilidade ponderada deu um "
         "sinal fraco mas real a 3 anos (a 1 ano quase nada); volatilidade e tendência não acrescentaram; a curva e a "
         "ponderada mensal deram o mesmo; o P/E não foi possível testar. Colunas A-R: copiadas da folha "
-        + (FOLHA_E2 if etf else FOLHA_A2) + " no ▶ CALCULAR e em cada ▶ ATUALIZAR (muda os teus títulos lá). "
+        + (FOLHA_E2 if etf else FOLHA_A2) + " no ▶ CALCULAR, no ↻ PREÇOS e em cada ▶ ATUALIZAR (os teus títulos mudam-se lá, não aqui). "
         "É baseada no passado: não garante o futuro.")
     ws[f"A{n + 2}"].font = Font(italic=True, size=9, color="595959")
     from openpyxl.chart import BarChart, Reference
@@ -11706,63 +11714,22 @@ def refrescar_alt(etf_, ex=None):
 
 
 def sincronizar_alt(ex=None):
-    """V181: antes dos botões das folhas novas: as colunas A-D e H (atualizar, detido, nº, preço de compra, corretora)
-    e as escolhas (o que atualizar, longo prazo mínimo) passam das folhas Ações / ETFs para Ações(2) / ETFs(2)."""
+    """V188: antes dos botões das folhas novas, passa só as escolhas (o que atualizar, longo prazo mínimo) para as folhas
+    base. Os títulos (detido, nº, preço de compra, corretora) NÃO passam: mudam-se só nas folhas Ações(2) / ETFs(2)
+    (duas cópias editáveis dos mesmos dados acabavam por se estragar uma à outra)."""
     ex = ex or Excel(FICHEIRO)
-    ultima = get_column_letter(len(COLS))
-    cl_t = get_column_letter(COL["ticker"])
+    limpa = lambda v: None if v is None or (isinstance(v, str) and (not v.strip() or v.startswith("="))) else v
     for etf_ in (False, True):
         nome_f, idx = ALT_FOLHA[etf_], (2 if etf_ else 1)
         try:
-            rr = ex.ops([{"op": "ler", "folha": nome_f, "rng": f"A{ALT_L0 + 1}:{cl_t}{ALT_L0 + ALT_MAX}"},
-                         {"op": "ler", "folha": nome_f, "rng": f"{ALT_C_SEL}:{ALT_C_SELV}"},
-                         {"op": "ler", "folha": nome_f, "rng": ALT_C_LP},
-                         {"op": "ler", "folha": idx, "rng": f"A{L0 + 1}:{cl_t}{L0 + MAX_LINHAS}"}])
+            rr = ex.ops([{"op": "ler", "folha": nome_f, "rng": f"{ALT_C_SEL}:{ALT_C_SELV}"},
+                         {"op": "ler", "folha": nome_f, "rng": ALT_C_LP}])
+            ex.ops([{"op": "escrever", "folha": idx, "rng": C_SEL, "valores": [[txt(rr[0][0][0]) or SELECOES[0]]]},
+                    {"op": "escrever", "folha": idx, "rng": C_SEL_V, "valores": [[limpa(rr[0][0][-1])]]},
+                    {"op": "escrever", "folha": idx, "rng": C_LPMIN, "valores": [[limpa(rr[1][0][0]) or LP_MIN]]}],
+                   guardar=True)
         except BaseException as e:
-            print(f"{nome_f}: não consegui ler a folha ({e}); fica como está.")
-            continue
-        limpa = lambda v: None if v is None or (isinstance(v, str) and (not v.strip() or v.startswith("="))) else v
-        jt, jh = COL["ticker"] - 1, COL["corr"] - 1
-        novo = {txt(v[jt]).upper(): v for v in rr[0] if txt(v[jt])}
-        if not novo:
-            continue
-        base = rr[3]
-        ad, hh, mud = [], [], 0
-        for v in base:
-            n_ = novo.get(txt(v[jt]).upper()) if txt(v[jt]) else None
-            if n_ is None:
-                ad.append(list(v[:4]))
-                hh.append([v[jh]])
-                continue
-            a_ = [limpa(x) for x in n_[:4]]
-            mud += sum(1 for x, y in zip(a_, v[:4]) if txt(x) != txt(limpa(y)))
-            ad.append([x if x is not None else " " for x in a_])
-            hh.append([limpa(n_[jh]) or " "])
-        lh = get_column_letter(COL["corr"])
-        sel_ = txt(rr[1][0][0]) or SELECOES[0]
-        try:                                           # V184: cópia do que estava na folha base (para recuperar)
-            _gravar_json(FICH_SINC_ANTES.replace(".json", f"_{idx}.json"),
-                         {"quando": f"{datetime.now():%d/%m/%Y %H:%M}",
-                          "linhas": {txt(v[jt]).upper(): [v[0], v[1], v[2], v[3], v[jh]] for v in base if txt(v[jt])}})
-        except Exception:
-            pass
-        ops_ = []                                      # V184: só as linhas que mudaram, uma a uma (pelo ticker)
-        for i_, (v, a_, h_) in enumerate(zip(base, ad, hh)):
-            if [txt(limpa(x)) for x in v[:4]] != [txt(limpa(x)) for x in a_] or txt(limpa(v[jh])) != txt(limpa(h_[0])):
-                ops_.append({"op": "escrever", "folha": idx, "rng": f"A{L0 + 1 + i_}:D{L0 + 1 + i_}", "valores": [a_]})
-                ops_.append({"op": "escrever", "folha": idx, "rng": f"{lh}{L0 + 1 + i_}", "valores": [h_]})
-        n_lin = len(ops_) // 2
-        if n_lin > 10:                                 # V187: travão: tantas mudanças de uma vez cheiram a erro
-            print(f"   AVISO: {nome_f} -> {FOLHA_E2 if etf_ else FOLHA_A2}: {n_lin} títulos com detido / nº / preço de "
-                  f"compra / corretora diferentes. Não passei nada (para não estragar a folha base). Se as mudanças "
-                  f"são mesmo tuas, faz-as na folha {FOLHA_E2 if etf_ else FOLHA_A2}.")
-            ops_, n_lin = [], 0
-        ops_ += [{"op": "escrever", "folha": idx, "rng": C_SEL, "valores": [[sel_]]},
-                 {"op": "escrever", "folha": idx, "rng": C_SEL_V, "valores": [[limpa(rr[1][0][-1])]]},
-                 {"op": "escrever", "folha": idx, "rng": C_LPMIN, "valores": [[limpa(rr[2][0][0]) or LP_MIN]]}]
-        com_filtros(ex, ops_, [idx])                   # sem filtros enquanto escreve (o Excel só escreveria nas visíveis)
-        print(f"{nome_f} -> {FOLHA_E2 if etf_ else FOLHA_A2}: colunas A-D e H e escolhas passadas "
-              f"({n_lin} títulos alterados).")
+            print(f"{nome_f}: não consegui passar as escolhas ({e}); ficam as da folha {FOLHA_E2 if etf_ else FOLHA_A2}.")
 
 
 FICH_SINC_ANTES = os.path.join(PASTA, BASE + "_antes_sincronizar.json")
@@ -11862,6 +11829,27 @@ def repor_detidos():
                 fontes.append((f"app (GitHub) · {quando:%d/%m/%Y %H:%M}", ler_, quando))
         except Exception as e:
             print("Não consegui ler o histórico do GitHub:", e)
+    for idx_ in (1, 2):                                # V188: cópias feitas antes de cada sincronização (V184-V187)
+        f_ = FICH_SINC_ANTES.replace(".json", f"_{idx_}.json")
+        if os.path.exists(f_):
+            def ler_s(f_=f_):
+                j_ = _ler_json(f_, {})
+                det_, q_, p_, c_ = [], {}, {}, {}
+                for t_, (sel_, dt_, qt_, pc_, co_) in (j_.get("linhas") or {}).items():
+                    q0 = qt_ if isinstance(qt_, (int, float)) else qtd_detida(dt_)
+                    if e_detido(dt_) or q0:
+                        det_.append(t_)
+                    if isinstance(q0, (int, float)) and q0 > 0:
+                        q_[t_] = q0
+                    if isinstance(pc_, (int, float)):
+                        p_[t_] = pc_
+                    if txt(co_).strip():
+                        c_[t_] = txt(co_).strip()
+                return {"det": det_, "qtd": q_, "pcompra": p_, "corr": c_, "_so": idx_}
+            j0 = _ler_json(f_, {})
+            q_ = datetime.fromtimestamp(os.path.getmtime(f_))
+            fontes.append((f"cópia antes da sincronização ({FOLHA_A2 if idx_ == 1 else FOLHA_E2}) · {j0.get('quando') or f'{q_:%d/%m/%Y %H:%M}'}",
+                           ler_s, q_))
     for f_ in (FICH_DET.replace(".json", "_anterior.json"), FICH_DET):
         if os.path.exists(f_):
             q_ = datetime.fromtimestamp(os.path.getmtime(f_))
@@ -11887,6 +11875,9 @@ def repor_detidos():
     lh = get_column_letter(COL["corr"])
     plano, mud = {}, []
     for idx in (1, 2):
+        plano[idx] = []
+        if j.get("_so") and j["_so"] != idx:
+            continue
         rr = ex.ops([{"op": "ler", "folha": idx, "rng": f"A{L0 + 1}:{ultima}{L0 + MAX_LINHAS}"}])[0]
         ops_ = []
         for i_, v in enumerate(rr):
