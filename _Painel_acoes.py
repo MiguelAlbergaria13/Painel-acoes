@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V217", "26/11/2026"
+VERSAO, DATA_VERSAO = "V218", "26/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1841,7 +1841,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
 # V211: as folhas Simulador e Histórico ficam como estão nas atualizações (copiadas do livro antigo, com gráficos e
 # tudo), enquanto a sua disposição não mudar de versão (marca escondida na célula MARCA_FOLHA)
 MARCA_FOLHA = "KN1"
-MARCAS_FIXAS = {"Simulador": "sim-L2", "Histórico": "his-L1"}   # V217: Simulador refeito 1 vez (F9 nas opções 1 e 4)
+MARCAS_FIXAS = {"Simulador": "sim-L2", "Histórico": "his-L2"}   # V217: Simulador refeito 1 vez; V218: Histórico refeito (2 gráficos por título)
 
 
 def marcar_folha_fixa(ws):
@@ -9052,9 +9052,15 @@ HIS_SER = (("forte", "Compra forte", "17692C"), ("media", "Compra média", "4CAF
            ("esperar", "Compra, mas esperar", "8E6BBF"), ("manter", "Manter", "A6A6A6"),
            ("venda", "Venda", "E06666"))                                         # séries dos gráficos (6 cores)
 HIS_COL0 = 27                                  # coluna AA: datas; depois 6 séries por título
-HIS_V = 4                                      # versão do ficheiro do histórico (4: 6 séries)
+HIS_V = 5                                      # versão do ficheiro do histórico (5: 2 × 6 séries por título)
+HIS_LADOS = (("ganhos", "nota por ganhos"), ("global", "nota global"))   # V218: esquerda / direita
 HIS_CLASSES = (("esperar", "Compra, mas esperar", "8E6BBF"), ("forte", "Compra forte", "1E7B34"), ("media", "Compra média", "63BE7B"), ("compra", "Compra", "A9D18E"),
                ("manter", "Manter", "A6A6A6"), ("venda", "Venda", "E06666"))
+
+
+def _his_classe_global(dec):
+    """V218: classe pela decisão do painel (nota global), sem a nota por ganhos."""
+    return _his_classe(dec, None)
 
 
 def _his_classe(dec, g5=None):
@@ -9097,9 +9103,10 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "já divulgados (10-Q e 10-K), como na tabela. O ÚLTIMO PONTO é a decisão da tabela (com analistas), para bater com ela. "
                 "Período em anos em C4 (=4/52 para 4 semanas); um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
-                "manter, vermelho venda. V206: forte / média / compra / manter vêm da NOTA POR GANHOS de cada data (≥ 3,95 / "
-                "≥ 3,5 / ≥ 3 / abaixo; com os parâmetros das folhas Ações / ETFs, só com as cotações até essa data); "
-                "esperar e venda vêm da decisão.")
+                "manter, vermelho venda. V218: dois gráficos por título. À ESQUERDA, forte / média / compra / manter vêm da "
+                "NOTA POR GANHOS de cada data (≥ 3,95 / ≥ 3,5 / ≥ 3 / abaixo; com os parâmetros das folhas Ações / ETFs, só "
+                "com as cotações até essa data), esperar e venda da decisão. À DIREITA, tudo pela decisão do painel (NOTA "
+                "GLOBAL). Os totais da tabela são os da esquerda.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
     ws["B2"].font = Font(italic=True, size=9, color="595959")
     ws.merge_cells("B2:N2")
@@ -9130,18 +9137,20 @@ def folha_historico(wb, linhas=(), etfs=()):
     for i in range(HIS_N):
         c = ws.cell(7 + i, 2, tks[i] if i < len(tks) else None)
         c.fill, c.border, c.font = amarelo, borda, Font(bold=True)
-        for j, v in enumerate(((g.get("resumo") or {}).get(txt(c.value).upper(), []) if g.get("v") in (3, HIS_V) else [])[:8], 3):
+        for j, v in enumerate(((g.get("resumo") or {}).get(txt(c.value).upper(), []) if g.get("v") in (3, 4, HIS_V) else [])[:8], 3):
             ws.cell(7 + i, j, v)
     for col, w in zip("BCDEFGHIJ", (30, 30, 10, 10, 10, 10, 10, 10, 34)):
         ws.column_dimensions[col].width = w
 
-    # dados (escondidos) e gráficos
+    # dados (escondidos) e gráficos; V218: por título, 6 séries da nota por ganhos e 6 da nota global
     NS = len(HIS_SER)
+    NC = NS * len(HIS_LADOS)
     ws.cell(HIS_L0 - 1, HIS_COL0, "Data")
     for k in range(HIS_N):
-        for m, (_, nome, _) in enumerate(HIS_SER):
-            ws.cell(HIS_L0 - 1, HIS_COL0 + 1 + NS * k + m, nome)
-    for c in range(HIS_COL0, HIS_COL0 + 1 + NS * HIS_N):
+        for la in range(len(HIS_LADOS)):
+            for m, (_, nome, _) in enumerate(HIS_SER):
+                ws.cell(HIS_L0 - 1, HIS_COL0 + 1 + NC * k + NS * la + m, nome)
+    for c in range(HIS_COL0, HIS_COL0 + 1 + NC * HIS_N):
         ws.column_dimensions[get_column_letter(c)].hidden = True
     _ant = [txt(t).upper() for t in (g.get("tickers") or [])]
     dados = g.get("dados") if g.get("v") == HIS_V and [txt(t).upper() for t in tks][:len(_ant)] == _ant else None
@@ -9157,16 +9166,16 @@ def folha_historico(wb, linhas=(), etfs=()):
                 ws.cell(HIS_L0 + i, HIS_COL0 + j, v)
     for r in range(HIS_L0, HIS_L0 + HIS_MAX):
         ws.cell(r, HIS_COL0).number_format = "dd/mm/yyyy"
-    for k in range(HIS_N):
-        lin_g = 19 + 18 * (k // 2)
-        col_g = "B" if k % 2 == 0 else "H"
-        ws[f"{col_g}{lin_g}"] = f"=IF(B{7 + k}=\"\",\"\",B{7 + k}&\" · \"&C{7 + k})"
+    for k, la in [(k, la) for k in range(HIS_N) for la in range(len(HIS_LADOS))]:
+        lin_g = 19 + 18 * k                             # V218: uma linha por título; esquerda ganhos, direita global
+        col_g = "B" if la == 0 else "H"
+        ws[f"{col_g}{lin_g}"] = (f"=IF(B{7 + k}=\"\",\"\",B{7 + k}&\" · \"&C{7 + k}&\" — {HIS_LADOS[la][1]}\")")
         ws[f"{col_g}{lin_g}"].font = Font(bold=True, size=12, color="1F4E79")
         ch = ScatterChart()                             # XY: o eixo das datas ajusta-se aos pontos que existem
         ch.style = 13
         xs = Reference(ws, min_col=HIS_COL0, min_row=HIS_L0, max_row=HIS_L0 + HIS_MAX - 1)
         for m in range(NS):
-            col = HIS_COL0 + 1 + NS * k + m
+            col = HIS_COL0 + 1 + NC * k + NS * la + m
             sr = Series(Reference(ws, min_col=col, min_row=HIS_L0 - 1, max_row=HIS_L0 + HIS_MAX - 1), xs,
                         title_from_data=True)
             ch.series.append(sr)
@@ -9308,8 +9317,9 @@ def calcular_historico():
             print(f"   {t}: sem decisão na tabela; último ponto calculado «{calc[:60]}»")
     dados, resumo = [], {}
     NS = len(HIS_SER)
+    NC = NS * len(HIS_LADOS)                       # V218: por título, 6 séries da nota por ganhos + 6 da nota global
     for dia in dias:
-        dados.append([dia.to_pydatetime()] + [None] * (NS * HIS_N))
+        dados.append([dia.to_pydatetime()] + [None] * (NC * HIS_N))
     ordem = [c for c, _, _ in HIS_CLASSES]
     serie_de = lambda c: c                         # uma série (cor) por classe
     ords = [c for c, _, _ in HIS_SER]
@@ -9318,25 +9328,28 @@ def calcular_historico():
             resumo[t] = [txt(todas.get(t, {}).get("nome")), "sem cotações"]
             continue
         cont = {c: 0 for c in ordem}
-        ant = None
+        ant = [None] * len(HIS_LADOS)
         for i, dia in enumerate(dias):
             pr = loc.at[dia, t]
             dcs = dec.get((dia, t))
             if dcs is None or pd.isna(pr):
-                ant = None
+                ant = [None] * len(HIS_LADOS)
                 continue
-            c = _his_classe(dcs[0], g5.get((dia, t)))
-            cont[c] += 1
-            sc = serie_de(c)
-            dados[i][1 + NS * k + ords.index(sc)] = float(pr)
-            if ant and ant != sc:                    # liga a linha: a semana da mudança também na série anterior
-                dados[i][1 + NS * k + ords.index(ant)] = float(pr)
-            ant = sc
+            for la, (lado, _) in enumerate(HIS_LADOS):
+                c = _his_classe(dcs[0], g5.get((dia, t))) if lado == "ganhos" else _his_classe_global(dcs[0])
+                if la == 0:
+                    cont[c] += 1                     # os totais da tabela são os da nota por ganhos (esquerda)
+                sc = serie_de(c)
+                base = 1 + NC * k + NS * la
+                dados[i][base + ords.index(sc)] = float(pr)
+                if ant[la] and ant[la] != sc:        # liga a linha: a semana da mudança também na série anterior
+                    dados[i][base + ords.index(ant[la])] = float(pr)
+                ant[la] = sc
         ult = next((dec[(d_, t)][0] for d_ in reversed(dias) if (d_, t) in dec), "")
         resumo[t] = [txt(todas.get(t, {}).get("nome")) or t] + [cont[c] for c in ordem] + [ult]
     _gravar_json(FICH_HIS, {"v": HIS_V, "tickers": tks, "anos": anos, "passo": passo, "resumo": resumo,
                             "dados": [[d[0].strftime("%Y-%m-%d")] + d[1:] for d in dados]})
-    vazio = [[None] * (1 + NS * HIS_N) for _ in range(HIS_MAX)]
+    vazio = [[None] * (1 + NC * HIS_N) for _ in range(HIS_MAX)]
     for i, lin in enumerate(dados):
         vazio[i] = lin
     tab_res = [(resumo.get(t, []) + [None] * 8)[:8] for t in tks] + [[None] * 8] * (HIS_N - len(tks))
@@ -9344,7 +9357,7 @@ def calcular_historico():
             "valores": [[t] for t in tks] + [[None]] * (HIS_N - len(tks))},        # repetidos (alinha com os gráficos)
            {"op": "escrever", "folha": FOLHA_HIS, "rng": f"C7:J{6 + HIS_N}", "valores": tab_res},
            {"op": "escrever", "folha": FOLHA_HIS,
-            "rng": f"{get_column_letter(HIS_COL0)}{HIS_L0}:{get_column_letter(HIS_COL0 + NS * HIS_N)}{HIS_L0 + HIS_MAX - 1}",
+            "rng": f"{get_column_letter(HIS_COL0)}{HIS_L0}:{get_column_letter(HIS_COL0 + NC * HIS_N)}{HIS_L0 + HIS_MAX - 1}",
             "valores": vazio}]
     ex.ops(ops, guardar=True)
     for t in tks:
@@ -11738,7 +11751,11 @@ def g_calcular(acoes, todos_nm, p, etf_, pre=None, gravar=True):
         except Exception:
             tend = None
         met = p.get("met") or ALT_METODOS[0]
-        pe0 = d.get("pe") if isinstance(d.get("pe"), (int, float)) and d.get("pe") > 0 else None
+        # V218: o fator preço usa o MAIOR P/E positivo entre o atual e o futuro (nas cíclicas, no pico dos lucros o
+        # P/E atual é muito baixo e dava um bónus enganador; o futuro, com os lucros a descer, é mais alto)
+        _pes = [x for x in (d.get("pe"), d.get("pe_fwd")) if isinstance(x, (int, float)) and x > 0]
+        pe0 = max(_pes) if _pes else None
+        _pe_fut = pe0 is not None and pe0 != d.get("pe")
         usar = ("nivel" if met == "Nível do painel" else "tend" if met == "Distância à tendência" else
                 "pe" if met == "P/E" else
                 ("pe" if pe0 is not None else "nivel" if nv is not None else "tend") if met == ALT_METODOS[0] else
@@ -11746,7 +11763,7 @@ def g_calcular(acoes, todos_nm, p, etf_, pre=None, gravar=True):
         if dref is not None and usar != "tend":        # nível / P/E são os de hoje: numa data passada vai pela tendência
             usar = "tend"
             obs.append("data passada: preço pela tendência")
-        pe = d.get("pe") if isinstance(d.get("pe"), (int, float)) else None
+        pe = pe0 if pe0 is not None else (d.get("pe") if isinstance(d.get("pe"), (int, float)) else None)
         if usar == "nivel" and nv is None:
             pe_u, f_pe = None, 1.0
             obs.append("sem nível de preço: fator 1")
@@ -11776,7 +11793,7 @@ def g_calcular(acoes, todos_nm, p, etf_, pre=None, gravar=True):
         if usar == "pe":
             f_pe = (pe_u / p["pe_ref"]) ** (1 / p["m"])
             if pe0 is not None and pe0 <= p["pe_max"]:
-                obs.append(f"P/E {pe0:.1f}")
+                obs.append(f"P/E {pe0:.1f}" + (" (futuro, maior que o atual)" if _pe_fut else ""))
         f_vol = 1.0 if not p.get("n") else max(1.0, (vol / p["vol_ref"]) ** (1 / p["n"])) if vol else None
         # V183: o fator volatilidade só penaliza (nunca < 1): menos oscilação do que a referência não dá prémio
         nota = None
