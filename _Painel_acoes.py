@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V215", "26/11/2026"
+VERSAO, DATA_VERSAO = "V216", "26/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -9573,7 +9573,8 @@ def folha_simulador(wb):
                  "«Rodar a carteira» vende o que saiu e reparte tudo pelos escolhidos, sem comissões nem impostos)")
     ws["G10"].font = Font(italic=True, size=9, color="808080")
     ws["G9"] = ("(C9 ex.: IWDA.AS = ações mundiais em €; vazio = sem comparação · F9 «esperar»: preço abaixo da média de "
-                "200 dias −5%, como no painel; nas opções «em cada data», em cada data; não conta nas opções 1 e 4)")
+                "200 dias −5%, em cada data, como no painel; nas opções 1-4, 7, 9 e 11 o dinheiro desse título fica guardado e é "
+                "comprado quando deixa de esperar; nas «em cada data» o título não é escolhido nessa data)")
     ws["G7"] = ("(com «Ações e ETFs», opções 2, 3, 5, 6, 9, 11: cada compra divide-se assim entre ações e ETFs; "
                 "na opção 5, N em cada parte)")
     ws["G7"].font = Font(italic=True, size=9, color="808080")
@@ -9587,7 +9588,7 @@ def folha_simulador(wb):
     ws["E6"].font = Font(bold=True, color="7030A0")
     usa = {"F6": (2, 3, 5, 6, 9, 10, 11, 12), "C7:D7": (1, 2, 3, 5, 6, 9, 11), "C10:D10": (5, 6, 8, 10, 12),
            "C11:D11": (7, 8), "F11": (7, 8), "C12:D12": (7, 8), "F12": (7, 8), "C13:D13": (5, 8, 9, 10, 11, 12),
-           "F7": (2, 3, 5, 6, 9, 11), "F9": (2, 3, 5, 6, 7, 8, 9, 10, 11, 12),
+           "F7": (2, 3, 5, 6, 9, 11), "F9": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
            "F5": (1, 2, 3, 4, 5, 6, 9, 10, 11, 12),
            f"B{SIM_LIN_CART}:C{SIM_LIN_CART + SIM_MAX_CART - 1}": (4,)}
     for rng_, cods in usa.items():                       # não conta para a escolha feita em «Comprar» -> cinzento
@@ -12373,13 +12374,18 @@ def _sim_datas_reforco(ini, fim, per):
     return out
 
 
-def _sim_correr(tab, pesos, compras, fim):
+def _sim_correr(tab, pesos, compras, fim, espera=None):
     """Compra nas datas indicadas (dia de bolsa seguinte), dividindo pelos pesos dos títulos com cotação.
+    V216: espera = DataFrame de True/False («esperar» em cada dia): a parte desse título fica guardada e é comprada
+    no 1.º dia em que deixar de esperar.
     -> (unidades, investido por título, série diária de valor, série diária de investido, fluxos)."""
     import pandas as pd
     idx = tab.index
     unid = {t: 0.0 for t in pesos}
     inv_t = {t: 0.0 for t in pesos}
+    pend = {t: 0.0 for t in pesos}
+    esp_ = (lambda dia, t: bool(espera.at[dia, t]) if espera is not None and t in espera.columns and dia in espera.index
+            else False)
     caixa, fluxos = 0.0, []
     planos = {}
     for d, v in compras:
@@ -12399,12 +12405,21 @@ def _sim_correr(tab, pesos, compras, fim):
             if sw > 0:
                 for t, w in com.items():
                     parte = v * w / sw
+                    if esp_(dia, t):
+                        pend[t] += parte                 # V216: «esperar»: guarda para comprar depois
+                        continue
                     unid[t] += parte / tab.at[dia, t]
                     inv_t[t] += parte
                 caixa = 0.0
             else:
                 caixa = v                                # ainda nenhum título com cotação: fica à espera
-        tot = caixa + sum(unid[t] * tab.at[dia, t] for t in unid if t in tab.columns and pd.notna(tab.at[dia, t]))
+        for t in [t_ for t_, v_ in pend.items() if v_ > 0]:          # V216: deixou de esperar: compra o guardado
+            if t in tab.columns and pd.notna(tab.at[dia, t]) and tab.at[dia, t] > 0 and not esp_(dia, t):
+                unid[t] += pend[t] / tab.at[dia, t]
+                inv_t[t] += pend[t]
+                pend[t] = 0.0
+        tot = caixa + sum(pend.values()) + sum(unid[t] * tab.at[dia, t] for t in unid
+                                              if t in tab.columns and pd.notna(tab.at[dia, t]))
         val.append(tot)
         inv.append(investido)
     serie_v = pd.Series(val, index=idx)
@@ -12560,7 +12575,7 @@ def simular():
     duplo = cod in (7, 8)
     grupos = None
     nmin = p.get("nota_min") if cod in (5, 8, 9, 10, 11, 12) else None   # V209: na 6 o mínimo é a F6
-    so_sem_esp = p.get("esp") == SIM_ESPERA[1] and cod not in (1, 4)          # V209: sem os «esperar»
+    so_sem_esp = p.get("esp") == SIM_ESPERA[1]           # V209/V216: «esperar» (também nas opções 1 e 4)
     pa = p.get("pa")
     if isinstance(pa, (int, float)):
         pa = pa / 100 if pa > 1 else pa
@@ -12569,8 +12584,7 @@ def simular():
     nota_de = {txt(d.get("ticker")).upper(): _sim_num(d.get("nota")) for d in acoes + etfs if txt(d.get("ticker"))}
     passa = lambda d: nmin is None or (_sim_num(d.get("nota")) is not None and _sim_num(d["nota"]) >= nmin)
     if not dinamico:                                      # nota mínima: só entram os que a cumprem (nota de hoje)
-        sem_e = lambda d: not so_sem_esp or ": esperar" not in txt(d.get("decisao"))
-        acoes_c, etfs_c = [d for d in acoes if passa(d) and sem_e(d)], [d for d in etfs if passa(d) and sem_e(d)]
+        acoes_c, etfs_c = [d for d in acoes if passa(d)], [d for d in etfs if passa(d)]
     else:
         acoes_c, etfs_c = acoes, etfs
     univ_c = {"Só ações": acoes_c, "Só ETFs": etfs_c}.get(p["entre"], acoes_c + etfs_c)
@@ -12617,7 +12631,14 @@ def simular():
         pesos = {txt(d["ticker"]).upper(): 1.0 for d in sel}
     else:
         pesos = {}
+        tab_t = {txt(d.get("ticker")).upper(): d for d in acoes + etfs if txt(d.get("ticker"))}
         for t, w in p["carteira"]:
+            t = txt(t).upper().strip()
+            if t and t not in tab_t:                      # V216: «SXR8» → o ticker da tabela (SXR8.DE)
+                alt = [k for k, d in tab_t.items() if k.split(".")[0] == t or txt(d.get("codigo")).upper() == t]
+                if alt:
+                    print(f"   {t}: uso {alt[0]} (o da tabela)")
+                    t = alt[0]
             pesos[t] = pesos.get(t, 0) + (w if isinstance(w, (int, float)) and w > 0 else 0)
         if pesos and not any(pesos.values()):
             pesos = {t: 1.0 for t in pesos}
@@ -12641,7 +12662,8 @@ def simular():
                 nomes.setdefault(t, t)
     print(f"Simulador: {len(pesos)} título(s) · {escolha} · de {ini:%d/%m/%Y} a {fim:%d/%m/%Y} ...")
     anos_g = max(float(g_params(False).get("anos") or 10), float(g_params(True).get("anos") or 10)) if dinamico else 0
-    ini_dados = ini.replace(year=ini.year - int(math.ceil(anos_g)) - 1) if dinamico else ini   # V209: os anos da nota
+    ini_dados = ini.replace(year=ini.year - int(math.ceil(anos_g)) - 1) if dinamico else \
+        ini.replace(year=ini.year - 1) if so_sem_esp else ini     # V209: os anos da nota; V216: a média de 200 dias
     hold, extra_h = {}, []
     if dinamico and cod in (10, 12):                      # V153: as ações dos ETFs (nível de preço em cada data)
         try:
@@ -12679,8 +12701,18 @@ def simular():
     if not compras:
         print("Simulador: sem dinheiro investido (investimento inicial e/ou reforço).")
         sys.exit(1)
-    sem_dados = [t for t in pesos if t not in tab.columns]
-    pesos_ok = {t: w for t, w in pesos.items() if t in tab.columns}
+    sem_dados = [t for t in pesos if t not in tab.columns or tab[t].notna().sum() == 0]   # V216: coluna vazia
+    pesos_ok = {t: w for t, w in pesos.items() if t not in sem_dados}
+    if not pesos_ok:
+        print("Simulador: sem cotações para " + ", ".join(sem_dados) + " (o ticker existe no Yahoo? ex.: SXR8.DE, "
+              "e não SXR8).")
+        sys.exit(1)
+    esp_df = None                                         # V216: «esperar» em cada dia (preço < média 200 −5%)
+    if so_sem_esp and _SIM_LOCAL.get("tab") is not None:
+        loc_ = _SIM_LOCAL.get("tab")
+        px_ = loc_.reindex(columns=[c for c in tab.columns if c in loc_.columns])
+        esp_df = (px_ < px_.rolling(200, min_periods=150).mean() * (1 - MARGEM_M200))
+        esp_df = esp_df.reindex(tab.index, method="ffill").fillna(False).astype(bool)
     vezes, vendido = {}, {}
     if dinamico:                                          # a nota do painel só nos dias de compra
         dias_c = sorted({tab.index[tab.index.searchsorted(pd.Timestamp(d))] for d, _ in compras
@@ -12723,11 +12755,8 @@ def simular():
                         if isinstance(v_, (int, float)):
                             gnot.at[dia, t] = float(v_)
         notas_p = gnot.reindex(tab.index)
-        if so_sem_esp and loc is not None:                # V209: «esperar» = preço abaixo da média de 200 dias −5%
-            px_ = loc.reindex(columns=[t for t in cols if t in loc.columns])
-            esp_ = (px_ < px_.rolling(200, min_periods=150).mean() * (1 - MARGEM_M200))
-            esp_ = esp_.reindex(tab.index, method="ffill").reindex(columns=notas_p.columns).fillna(False).astype(bool)
-            notas_p = notas_p.mask(esp_)
+        if esp_df is not None:                            # V209: «esperar» = preço abaixo da média de 200 dias −5%
+            notas_p = notas_p.mask(esp_df.reindex(columns=notas_p.columns).fillna(False).astype(bool))
     modo = "n" if cod in (5, 10) else "nota"              # 6 e 12: todos os que passam o limite
     limite = (p["n"] or 10) if modo == "n" else (p["n"] if p["n"] is not None else 3.5)
     if dividir and not duplo:                             # V209: % em ações, o resto em ETFs
@@ -12755,7 +12784,7 @@ def simular():
                 vezes.update(vz)
                 vendido.update(vd_)
             else:
-                u_, i_, sv_, si_, f_ = _sim_correr(tab, {t: pesos_ok.get(t, 1.0) for t in tk}, cg, fim)
+                u_, i_, sv_, si_, f_ = _sim_correr(tab, {t: pesos_ok.get(t, 1.0) for t in tk}, cg, fim, esp_df)
             unid.update(u_)
             inv_t.update(i_)
             fluxos += f_[:-1]
@@ -12774,7 +12803,7 @@ def simular():
         pesos_ok = {t: 1.0 for t in inv_t}
         unid = {t: unid.get(t, 0.0) for t in pesos_ok}
     else:
-        unid, inv_t, sv, si, fluxos = _sim_correr(tab, pesos_ok, compras, fim)
+        unid, inv_t, sv, si, fluxos = _sim_correr(tab, pesos_ok, compras, fim, esp_df)
     investido, final = float(si.iloc[-1]), float(sv.iloc[-1])
     tir = _xirr(fluxos)
     queda = _sim_maior_queda(sv, si)
@@ -12809,8 +12838,9 @@ def simular():
     if dividir and duplo and cod not in (7, 8):
         notas.append(f"cada compra dividida: {pa:.0%} em ações, {1 - pa:.0%} em ETFs")
     if so_sem_esp:
-        notas.append("sem os títulos com «esperar» (preço abaixo da média de 200 dias −5%"
-                     + (", em cada data)" if dinamico else ", hoje)"))
+        notas.append("«esperar» = preço abaixo da média de 200 dias −5%, em cada data: "
+                     + ("nessa data o título não é escolhido" if dinamico else
+                        "a parte desse título fica guardada e é comprada no 1.º dia em que deixa de esperar"))
     if dinamico:
         notas.append(f"reclassificado em cada data pela nota por ganhos (parâmetros das folhas Ações / ETFs) só com "
                      f"as cotações até cada data (o preço pela distância à tendência; sem qualidade e saúde)"
