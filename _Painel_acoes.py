@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V209", "26/11/2026"
+VERSAO, DATA_VERSAO = "V215", "26/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1251,6 +1251,7 @@ def construir(linhas, atualizado, etfs=(), criterios=None, acrescentados=(), est
     wb.active = 0
     for ws in wb.worksheets:
         marcar_versao(ws)
+        marcar_folha_fixa(ws)
     centrar_vertical(wb)
     return wb
 
@@ -1629,9 +1630,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
                           (f"${bl}{L0+1}>1.2", "FCE4D6", "1C1E21")):
         ws.conditional_formatting.add(faixa("beta"), FormulaRule(formula=[f"AND(ISNUMBER(${bl}{L0+1}),{cond})"],
                                       fill=PatternFill("solid", bgColor=cor), font=Font(color=fc), stopIfTrue=True))
-    ws.conditional_formatting.add(faixa("decisao"), FormulaRule(       # compra em espera: lilás (o azul é «cara»)
-        formula=[f'ISNUMBER(SEARCH(": esperar",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor=COR_ESPERA),
-        font=Font(color="5B2C83", bold=True), stopIfTrue=True))
+    # V215: «Compra …*: esperar (?)» já não é lilás: fica com o verde da compra (forte / média / compra)
     ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
         formula=[f'ISNUMBER(SEARCH("saúde frágil",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="F8CBAD"),
         font=Font(color="C00000", bold=True), stopIfTrue=True))
@@ -1839,15 +1838,105 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
     ws[f"B{n+2}"].font = Font(italic=True, size=9, color="595959")
 
 
+# V211: as folhas Simulador e Histórico ficam como estão nas atualizações (copiadas do livro antigo, com gráficos e
+# tudo), enquanto a sua disposição não mudar de versão (marca escondida na célula MARCA_FOLHA)
+MARCA_FOLHA = "KN1"
+MARCAS_FIXAS = {"Simulador": "sim-L1", "Histórico": "his-L1"}
+
+
+def marcar_folha_fixa(ws):
+    if ws.title in MARCAS_FIXAS:
+        ws[MARCA_FOLHA] = MARCAS_FIXAS[ws.title]
+        ws[MARCA_FOLHA].font = Font(color="FFFFFF", size=6)
+
+
+def _folhas_a_manter():
+    """Folhas do livro aberto/atual com a mesma disposição desta versão (podem ser copiadas tal como estão)."""
+    if not os.path.exists(FICHEIRO):
+        return []
+    r = _tentar(Excel(FICHEIRO), [{"op": "ler", "folha": f, "rng": MARCA_FOLHA} for f in MARCAS_FIXAS])
+    if not r:
+        return []
+    out = []
+    for f, v in zip(MARCAS_FIXAS, r):
+        try:
+            if txt(v[0][0]) == MARCAS_FIXAS[f]:
+                out.append(f)
+        except Exception:
+            pass
+    return out
+
+
+def _repor_folhas_antigas(antigo, folhas):
+    """Copia as folhas do livro antigo para o novo (Excel), no mesmo sítio. Falha = ficam as novas."""
+    if not folhas or os.name != "nt" or not os.path.exists(antigo):
+        return
+    try:
+        import win32com.client
+        import pythoncom
+        pythoncom.CoInitialize()
+        xl = win32com.client.DispatchEx("Excel.Application")
+    except Exception as e:
+        print(f"   (folhas {', '.join(folhas)}: não consegui abrir o Excel para as manter: {e})")
+        return
+    feitas = []
+    try:
+        xl.Visible, xl.DisplayAlerts = False, False
+        wn = xl.Workbooks.Open(os.path.abspath(FICHEIRO), UpdateLinks=0)
+        wa = xl.Workbooks.Open(os.path.abspath(antigo), UpdateLinks=0, ReadOnly=True)
+        for f in folhas:
+            try:
+                sa = wa.Worksheets(f)
+                sn = wn.Worksheets(f)
+            except Exception:
+                continue
+            pos = sn.Index
+            sn.Name = f + "_x"
+            sa.Copy(Before=wn.Worksheets(pos))
+            wn.Worksheets(f + "_x").Delete()
+            try:
+                wn.Worksheets(f).Range("A1").Value = TXT_VERSAO
+            except Exception:
+                pass
+            feitas.append(f)
+        try:                                            # sem ligações ao livro antigo
+            for lk in (wn.LinkSources(1) or ()):
+                wn.ChangeLink(lk, wn.FullName, 1)
+        except Exception:
+            pass
+        wn.Worksheets(1).Activate()
+        wa.Close(False)
+        wn.Save()
+        wn.Close(False)
+    except Exception as e:
+        print(f"   (não consegui manter as folhas {', '.join(folhas)} como estavam: {e})")
+    finally:
+        try:
+            xl.Quit()
+        except Exception:
+            pass
+    if feitas:
+        print(f"   {', '.join(feitas)}: ficaram como estavam (não mexo nelas ao atualizar).")
+
+
 def guardar_e_abrir(wb):
     filtros = ler_filtros()                         # os teus filtros (todas as folhas), para repor no livro novo
     tmp = os.path.join(os.path.dirname(FICHEIRO), BASE + "_novo.tmp")      # .tmp: o OneDrive não sincroniza
     wb.save(tmp)                                    # primeiro numa cópia (o painel aberto não é tocado)
+    manter = _folhas_a_manter() if os.name == "nt" else []
+    import tempfile
+    antigo = os.path.join(tempfile.gettempdir(), BASE + "_antigo.xlsx")   # fora do OneDrive; .xlsx para o Excel o abrir
     if os.name == "nt":
         try:                                        # painel aberto no Excel: guarda e fecha
             Excel(FICHEIRO).ops([{"op": "fechar"}])
         except Exception:
             pass
+        if manter:
+            try:
+                time.sleep(1)
+                shutil.copy2(FICHEIRO, antigo)      # V211: para copiar o Simulador e o Histórico tal como estão
+            except Exception:
+                manter = []
     for tent in range(30):                          # espera que o Excel / OneDrive larguem o ficheiro (até ~30 s)
         try:
             time.sleep(1 if tent else 2)
@@ -1864,6 +1953,12 @@ def guardar_e_abrir(wb):
         input("Carrega em Enter para sair...")
         sys.exit(1)
     if os.name == "nt":
+        if manter:
+            _repor_folhas_antigas(antigo, manter)
+            try:
+                os.remove(antigo)
+            except Exception:
+                pass
         os.startfile(FICHEIRO)
         repor_filtros(filtros)          # a janela da posição fica preparada mas só abre com ▣ VER POSIÇÃO
 
@@ -3889,7 +3984,7 @@ def compra_espera(d):
         return f"{NIVEIS[nivel]} (sinal ainda a confirmar{nc_})"
     if not falta:
         falta.append("confirmar a subida (sinal ≥ 3)")
-    return f"{NIVEIS[nivel]}: esperar ({pre}{'; '.join(falta)})"
+    return f"{NIVEIS[nivel]}*: esperar (?) ({pre}{'; '.join(falta)})"   # V215: * e (?) em vez do lilás
 
 
 def decisao_global(d):
@@ -4651,6 +4746,8 @@ def incluir_novos(novos):
         folhas[2 if d.get("tipo") == "ETF" else 1].append(d)
     pontuar_etfs(folhas[2])
     criterios, acrescentados, estado = ler_estado()
+    carregar_simulador(ex)                                # V213: o que está escrito no Simulador e no Histórico
+    carregar_historico(ex)
     base = re.sub(r" · \+\d+ acrescentado.*$", "", txt(r[2][0][0]) or "Atualizado")
     texto = base + f" · +{len(novos)} acrescentado(s) em {datetime.now():%d/%m/%Y %H:%M}"
     wb = construir(folhas[1], texto, folhas[2], criterios, acrescentados, estado)
@@ -6174,7 +6271,7 @@ const eur=v=>'€ '+num(v,2);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function cartao(d){
   const dc=d.dc||'';
-  const corDec=(dc.startsWith('Compra')&&!dc.includes(': esperar'))?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
+  const corDec=dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
   const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v):cor(v);   // nota global (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
@@ -6215,7 +6312,7 @@ const cmpX=()=>{let c=null;try{c=JSON.parse(localStorage.getItem('cmp_x')||'null
 const nPt=v=>{const x=parseFloat(String(v).replace(/\s|€|%/g,'').replace(',','.'));return isNaN(x)?null:x;};
 const corT=d=>d.np!=null?corG(d.ngc):cor(d.ngc);
 const corG5=v=>v>=3.95?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';   // V203   // ações com nível de preço: 3,95/3,5/3; ETFs: 4,5/3,75/2,75
-function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#D9C3E9':/saúde frágil/i.test(dc)?'#F8CBAD':
+function corDecF(d){const dc=d.dc||'';return /saúde frágil/i.test(dc)?'#F8CBAD':
   dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':
   dc.startsWith('Compra forte')?'#63BE7B':dc.startsWith('Compra média')?'#A9D18E':dc.startsWith('Compra')?'#E2EFDA':'#FFEB9C';}
 function compra(){
@@ -6296,7 +6393,7 @@ function calcCompra(){
   }
   g('cr').innerHTML=h;
 }
-const dc_=d=>(d.dc||'').includes(': esperar')?'color:#5B2C83;font-weight:700':(d.dc||'').startsWith('Venda')?'font-weight:700':'';
+const dc_=d=>(d.dc||'').startsWith('Venda')?'font-weight:700':'';
 function ligarCompra(){
   const cp=document.getElementById('cp');                       // % sempre com o símbolo (60%, não 0,6)
   cp.addEventListener('focus',()=>{cp.value=cp.value.replace('%','').trim();});
@@ -7973,6 +8070,7 @@ def atualizar_tudo(so=None, servidor=None):
             criterios, acrescentados, estado = ler_estado()
             carregar_pesos(Excel(FICHEIRO) if os.name == "nt" or os.path.exists(FICHEIRO) else None)
             carregar_simulador(Excel(FICHEIRO) if os.name == "nt" or os.path.exists(FICHEIRO) else None)
+            carregar_historico(Excel(FICHEIRO) if os.name == "nt" or os.path.exists(FICHEIRO) else None)
         LP_MIN = estado.get("lp_min", LP_MIN)
         print(f"Longo prazo mínimo: {LP_MIN:.1%}/ano (abaixo disto, o que seria compra passa a 2.5 Não Rent. Longo Prazo).")
         if not estado.get("det"):
@@ -8556,7 +8654,7 @@ def folha_compra(wb):
                 "ex. a corretora não o tem): fica riscado, com 0 €, e os valores dos outros do mesmo grupo recalculam-se "
                 "logo (também ao mudar o valor total ou a % em ações). Os x ficam guardados para os próximos cálculos. "
                 "As linhas escondidas com os filtros do cabeçalho também ficam com 0 € (o valor passa para as que se veem). "
-                "Decisão a lilás («Compra …: esperar»): título bom e barato cujo momento ainda não é de compra; entra "
+                "Decisão «Compra …*: esperar (?)»: título bom e barato cujo momento ainda não é de compra; entra "
                 "como os outros (com a nota por ganhos da tabela) e a decisão diz o que esperar (preço acima da média 200 "
                 "ou 50 dias e/ou até à compra máxima): usa a ordem limite ou põe x em «Não quero» se preferires esperar. "
                 "FIXOS (linhas 13-17): até 5 ações e 5 ETFs que entram sempre (mesmo sem cumprir os critérios), com a % "
@@ -8710,8 +8808,7 @@ def folha_compra(wb):
         fill=PatternFill("solid", bgColor="DDEBF7")))
     # decisão: as mesmas cores das folhas Ações / ETFs
     dcl = f"${CDC}{a0}"
-    for f_, cor, fnt in ((f'ISNUMBER(SEARCH(": esperar",{dcl}))', COR_ESPERA, Font(color="5B2C83", bold=True)),
-                         (f'ISNUMBER(SEARCH("saúde frágil",{dcl}))', "F8CBAD", Font(color="C00000", bold=True)),
+    for f_, cor, fnt in ((f'ISNUMBER(SEARCH("saúde frágil",{dcl}))', "F8CBAD", Font(color="C00000", bold=True)),
                          (f'LEFT({dcl},5)="Venda"', "F8696B", Font(bold=True)),
                          (f'ISNUMBER(SEARCH("Longo Prazo",{dcl}))', "F4B183", None),
                          (f'LEFT({dcl},6)="Manter"', "FFEB9C", None)):
@@ -8984,7 +9081,9 @@ def folha_historico(wb, linhas=(), etfs=()):
     títulos, calculada só com os dados conhecidos em cada dia (cotações; nos EUA também os relatórios da SEC)."""
     from openpyxl.chart import ScatterChart, Reference, Series
     g = _ler_json(FICH_HIS, {})
-    tks = g.get("tickers") or [txt(d.get("ticker")) for d in list(linhas) + list(etfs) if e_detido(d.get("det"))][:HIS_N]
+    ent = g.get("entrada") or {}                   # V213: o que estava escrito na folha (lido antes de atualizar)
+    tks = ent.get("tickers") or g.get("tickers") or \
+        [txt(d.get("ticker")) for d in list(linhas) + list(etfs) if e_detido(d.get("det"))][:HIS_N]
     ws = wb.create_sheet(FOLHA_HIS)
     ws["A1"] = "Histórico da classificação: o que o painel teria aconselhado em cada dia"
     ws["A1"].font = Font(size=14, bold=True)
@@ -9007,8 +9106,8 @@ def folha_historico(wb, linhas=(), etfs=()):
     ws.row_dimensions[2].height = 80
     amarelo = PatternFill("solid", fgColor="FFF2CC")
     borda = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
-    ws["B4"], ws["C4"] = f"Período em anos (até {HIS_ANOS_MAX})", g.get("anos") or 1      # V156: letra legível
-    ws["B5"], ws["C5"] = "Dias de bolsa por ponto (3 a 21)", g.get("passo") or 5
+    ws["B4"], ws["C4"] = f"Período em anos (até {HIS_ANOS_MAX})", ent.get("anos") or g.get("anos") or 1   # V156
+    ws["B5"], ws["C5"] = "Dias de bolsa por ponto (3 a 21)", ent.get("passo") or g.get("passo") or 5
     for c_ in ("B4", "B5"):
         ws[c_].font = Font(bold=True, size=9)
         ws[c_].alignment = Alignment(wrap_text=False, vertical="center")
@@ -9044,7 +9143,9 @@ def folha_historico(wb, linhas=(), etfs=()):
             ws.cell(HIS_L0 - 1, HIS_COL0 + 1 + NS * k + m, nome)
     for c in range(HIS_COL0, HIS_COL0 + 1 + NS * HIS_N):
         ws.column_dimensions[get_column_letter(c)].hidden = True
-    dados = g.get("dados") if g.get("v") == HIS_V else None
+    _ant = [txt(t).upper() for t in (g.get("tickers") or [])]
+    dados = g.get("dados") if g.get("v") == HIS_V and [txt(t).upper() for t in tks][:len(_ant)] == _ant else None
+    # V213: os gráficos ficam se os títulos já gerados continuarem nas mesmas linhas (os novos ficam vazios até gerar)
     if dados:
         for i, lin in enumerate(dados[:HIS_MAX]):
             for j, v in enumerate(lin):
@@ -9239,7 +9340,9 @@ def calcular_historico():
     for i, lin in enumerate(dados):
         vazio[i] = lin
     tab_res = [(resumo.get(t, []) + [None] * 8)[:8] for t in tks] + [[None] * 8] * (HIS_N - len(tks))
-    ops = [{"op": "escrever", "folha": FOLHA_HIS, "rng": f"C7:J{6 + HIS_N}", "valores": tab_res},
+    ops = [{"op": "escrever", "folha": FOLHA_HIS, "rng": f"B7:B{6 + HIS_N}",      # V213: sem linhas vazias nem
+            "valores": [[t] for t in tks] + [[None]] * (HIS_N - len(tks))},        # repetidos (alinha com os gráficos)
+           {"op": "escrever", "folha": FOLHA_HIS, "rng": f"C7:J{6 + HIS_N}", "valores": tab_res},
            {"op": "escrever", "folha": FOLHA_HIS,
             "rng": f"{get_column_letter(HIS_COL0)}{HIS_L0}:{get_column_letter(HIS_COL0 + NS * HIS_N)}{HIS_L0 + HIS_MAX - 1}",
             "valores": vazio}]
@@ -9371,6 +9474,23 @@ def ler_simulador(ex):
         p[k] = d.strftime("%d/%m/%Y") if d else ""
     p["comprar"] = SIM_COMPRAR[_sim_cod(p["comprar"]) - 1]
     return p
+
+
+def carregar_historico(ex=None):
+    """V213: antes de reconstruir o livro, guarda o que está escrito na folha Histórico (tickers, anos, dias por
+    ponto), mesmo que ainda não se tenha carregado em ▶ GERAR HISTÓRICO. Os resultados ficam como estavam."""
+    if ex is None:
+        return
+    try:
+        r = ex.ops([{"op": "ler", "folha": FOLHA_HIS, "rng": "C4"}, {"op": "ler", "folha": FOLHA_HIS, "rng": "C5"},
+                    {"op": "ler", "folha": FOLHA_HIS, "rng": f"B7:B{6 + HIS_N}"}])
+        tks = [txt(sem_esp(l_[0])).strip() for l_ in r[2] if txt(sem_esp(l_[0])).strip()]
+        g = _ler_json(FICH_HIS, {})
+        g["entrada"] = {"tickers": tks, "anos": _num_ou(sem_esp(r[0][0][0]), None),
+                        "passo": _num_ou(sem_esp(r[1][0][0]), None)}
+        _gravar_json(FICH_HIS, g)
+    except Exception:
+        pass
 
 
 def carregar_simulador(ex=None):
@@ -12582,11 +12702,11 @@ def simular():
             _sim_notas_painel(loc[cols + cols_h], tipos, dias_c, sec, niveis_p, None, hold)
         niveis_p = niveis_p.reindex(tab.index)
         # V208: a nota de cada data é a nota por ganhos (com os parâmetros das folhas Ações / ETFs, só com as cotações
-        # até essa data), numa grelha de até 60 datas; entre elas vale a da data anterior
+        # até essa data); V212: calculada em todas as datas de compra
         todos_nm = {}
         for d_ in acoes + etfs:
             todos_nm.setdefault(txt(d_.get("nome")).strip().lower(), d_)
-        grelha = dias_c[::max(1, -(-len(dias_c) // 60))]
+        grelha = list(dias_c)                             # V212: em todas as datas de compra (sem limite)
         gnot = pd.DataFrame(index=pd.DatetimeIndex(dias_c), columns=cols, dtype=float)
         for etf_, lst_ in ((False, acoes), (True, etfs)):
             meus = [t for t in cols if any(txt(d_.get("ticker")).upper() == t for d_ in lst_)]
