@@ -662,7 +662,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V216", "26/11/2026"
+VERSAO, DATA_VERSAO = "V217", "26/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1841,7 +1841,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
 # V211: as folhas Simulador e Histórico ficam como estão nas atualizações (copiadas do livro antigo, com gráficos e
 # tudo), enquanto a sua disposição não mudar de versão (marca escondida na célula MARCA_FOLHA)
 MARCA_FOLHA = "KN1"
-MARCAS_FIXAS = {"Simulador": "sim-L1", "Histórico": "his-L1"}
+MARCAS_FIXAS = {"Simulador": "sim-L2", "Histórico": "his-L1"}   # V217: Simulador refeito 1 vez (F9 nas opções 1 e 4)
 
 
 def marcar_folha_fixa(ws):
