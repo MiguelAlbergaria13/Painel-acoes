@@ -252,7 +252,7 @@ COLS = [("sel", "Atualizar (x)", 3, "txt", "sel"), ("det", "Detido (x)", 4, "txt
         ("preco_hora", "Preço de (sessão, hora de Lisboa)", 16, "txt", "id"), ("preco", "Preço atual", 12, "preco", "id"),
         ("desde_ref", "Da data de referência até hoje (%)", 11, "pct", "teste"),
         ("nota_geral", "Nota pelo Negócio/Preço: nota geral + nível de preço (2 : 1, folha Ponderações)", 9, "nota", "global"),
-        ("decisao", "Decisão integrada (a melhor da Nota Global e da Nota pelo Negócio/Preço)", 14, "txt", "global"),
+        ("decisao", "Decisão integrada (a melhor da Nota Global e da Nota pelo Negócio/Preço; +1 nível se a dos Ganhos estiver acima)", 14, "txt", "global"),
         ("nota", "Nota geral: negócio, tendência e momento, sem o preço (pesos na folha Ponderações)", 9, "nota", "global"),
         ("nivel_preco", "Nível de preço (5 muito barata … 1 muito cara)", 19, "nivel", "global"),
         ("beta", "Beta: oscilação face ao mercado (S&P 500; 1 = igual, >1 amplifica, <1 amortece)", 6, "num1", "global"),
@@ -470,6 +470,7 @@ CAB_ALIAS = {                                  # V221: cabeçalhos antigos (V218
     "Nota global: nota geral + nível de preço (2 : 1, folha Ponderações)": "nota_geral",
     "Decisão (pela nota global: nota geral + preço)": "decisao",
     "Decisão (pela nota pelo negócio/preço: nota geral + preço)": "decisao",   # V221/V222
+    "Decisão integrada (a melhor da Nota Global e da Nota pelo Negócio/Preço)": "decisao",   # V223
     "Nota por ganhos (0-5: rent. ÷ fatores; 5 = 25% da melhor + 75% da 2.ª)": "g_n5",
     "Ganhos: rent. anual da base da nota (%/ano, sem fatores)": "g_nota",
     "Ganhos: rent. ajustada pelos fatores (%/ano; dá a nota 0-5)": "g_ajust"}
@@ -707,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V223", "27/11/2026"
+VERSAO, DATA_VERSAO = "V224", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -3911,7 +3912,7 @@ def folha_pesos(wb):
     ws["C61"] = ("A nota geral mede o negócio, a tendência e o momento, mas não diz se o preço é bom para comprar. A NOTA "
                  "GLOBAL junta-lhe o nível de preço (5 muito barata … 1 muito cara): (nota geral × peso E62 + nível de "
                  "preço × peso E63) / (E62 + E63). Com 2 e 1: dois terços nota geral, um terço preço. Sem nível de preço "
-                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas: a da Nota Global (≥ 3,9 / 3,5 / 3) e a da nota pelo negócio/preço: ≥ 3,9 compra forte, "
+                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas, a da Nota Global (≥ 3,9 / 3,5 / 3) e a da nota pelo negócio/preço, mais um nível se a da Nota pelos Ganhos estiver acima; a do negócio/preço: ≥ 3,9 compra forte, "
                  "≥ 3,5 compra média, ≥ 3 compra (sem nível de preço: os limites da nota geral, 4,5 / 3,75 / 2,75); "
                  "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. Numa RECUPERAÇÃO depois de uma "
                  "queda (linhas 66-68) a decisão diz «(recuperação)»; o nível continua a ser o da nota pelo negócio/preço.")
@@ -8987,7 +8988,7 @@ def folha_compra(wb):
             formula=[f'LEFT({dcl},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor), font=Font(bold=b_),
             stopIfTrue=True))
     gj = _ler_json(FICH_COMPRA, {})
-    res = (gj.get("linhas2") or []) if gj.get("l0") == CMP_L0 else []     # V163: resultados de antes (outra linha) não
+    res = (gj.get("linhas2") or []) if gj.get("l0") == CMP_L0 and gj.get("cv") == 2 else []   # V223: cv 2 = fixos corrigidos     # V163: resultados de antes (outra linha) não
     for i, lin in enumerate(res[:CMP_MAX]):
         for j, v in enumerate(lin, 1):
             ws.cell(CMP_L0 + i, j, v)
@@ -9186,7 +9187,7 @@ def calcular_compra():
         linhas.append([""] * len(CMP_CAB))
     for a in avisos:
         linhas.append(["", "", a] + [""] * (len(CMP_CAB) - 3))
-    _gravar_json(FICH_COMPRA, {**p, "excluir": sorted(excluir), "indisp": sorted(indisp), "linhas2": linhas[:CMP_MAX],
+    _gravar_json(FICH_COMPRA, {**p, "excluir": sorted(excluir), "indisp": sorted(indisp), "linhas2": linhas[:CMP_MAX], "cv": 2,
                                "l0": CMP_L0, "ts": int(time.time() * 1000)})          # a app usa as escolhas mais recentes
     vazio = [[None] * len(CMP_CAB) for _ in range(CMP_MAX)]
     for i, lin in enumerate(linhas[:CMP_MAX]):
@@ -9277,7 +9278,7 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "Período em anos em C4 (=4/52 para 4 semanas); um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
                 "manter, vermelho venda. Quatro gráficos por título (V223): 1.º DECISÃO INTEGRADA (em cada data, a melhor das "
-                "classificações do 2.º e do 4.º; é a decisão das folhas Ações e ETFs); 2.º NOTA GLOBAL de cada data (Negócio/Preço + Ganhos, "
+                "classificações do 2.º e do 4.º e, se a do 3.º estiver acima, mais um nível; é a decisão das folhas Ações e ETFs); 2.º NOTA GLOBAL de cada data (Negócio/Preço + Ganhos, "
                 "pesos da folha Ponderações; ≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra); 3.º NOTA PELOS GANHOS (≥ 3,9 / 3,5 / 3; só "
                 "com as cotações até essa data); 4.º NOTA PELO NEGÓCIO/PREÇO (a decisão do painel sem a integração). Esperar e "
                 "venda vêm sempre da decisão. Os totais da tabela são os do 1.º.")
@@ -9486,7 +9487,7 @@ def calcular_historico():
             continue
         calc = txt((dec.get((dias[-1], t)) or [""])[0])
         if dt_:
-            if MARCA_INT in dt_ and calc:          # V223: o gráfico do negócio usa a decisão sem a integração
+            if (MARCA_INT in dt_ or " · pela Nota Global" in dt_) and calc:          # V223: o gráfico do negócio usa a decisão sem a integração
                 dt_neg[t] = calc
             dec[(dias[-1], t)] = (dt_, d.get("nota_geral"), d.get("nivel_preco"))
             print(f"   {t}: último ponto = decisão da tabela «{dt_[:60]}» (calculada sem analistas: «{calc[:60]}»)")
@@ -9520,10 +9521,16 @@ def calcular_historico():
             if dia == dias[-1] and isinstance(todas.get(t, {}).get("nota_glob"), (int, float)):
                 gl_ = todas[t]["nota_glob"]
             d_neg = dt_neg.get(t, dcs[0]) if dia == dias[-1] else dcs[0]
-            c_gl, c_ng = _his_classe(d_neg, gl_), _his_classe_global(d_neg)
+            c_gl, c_ng, c_g5 = _his_classe(d_neg, gl_), _his_classe_global(d_neg), _his_classe(d_neg, gv_, G5_LIM)
+            c_in = min(c_gl, c_ng, key=HIS_RANK.index)
+            sobe = ("compra", "media", "forte")         # V223: ganhos acima -> sobe um nível (manter só o da nota)
+            if c_in in ("compra", "media") or (c_in == "manter" and txt(d_neg).startswith(MANTER_NOTA)):
+                n_in = sobe.index(c_in) if c_in != "manter" else -1
+                n_g5 = sobe.index(c_g5) if c_g5 in sobe else -1
+                if n_g5 > n_in:
+                    c_in = sobe[n_in + 1]
             for la, (lado, _) in enumerate(HIS_LADOS):
-                c = (min(c_gl, c_ng, key=HIS_RANK.index) if lado == "integrada" else c_gl if lado == "global" else
-                     _his_classe(dcs[0], gv_, G5_LIM) if lado == "ganhos" else c_ng)
+                c = (c_in if lado == "integrada" else c_gl if lado == "global" else c_g5 if lado == "ganhos" else c_ng)
                 if la == 0:
                     cont[c] += 1                     # V223: os totais da tabela são os da decisão integrada (esquerda)
                 sc = serie_de(c)
@@ -11600,7 +11607,7 @@ def nglob_todos(*listas):
             d["decisao"] = decisao_integrada(d)
 
 
-MARCA_INT = " · pela Nota Global"
+MARCA_INT = " · integrada"
 
 
 def _nivel_dec(dec):
@@ -11611,24 +11618,44 @@ def _nivel_dec(dec):
     return None
 
 
+def _nivel_nota(v, lims):
+    """5 / 4 / 3 pelos limites (forte, média, compra); 2 abaixo (manter); None sem nota."""
+    if not isinstance(v, (int, float)):
+        return None
+    return 5 if v >= lims[0] else 4 if v >= lims[1] else 3 if v >= lims[2] else 2
+
+
+MANTER_NOTA = ("Manter (nota pelo negócio/preço baixa", "Manter (qualidade / saúde fracas)")
+
+
 def decisao_integrada(d):
-    """V223: decisão integrada = a melhor das duas classificações, a da Nota pelo Negócio/Preço (a decisão de sempre)
-    e a da Nota Global (≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra). Venda, manter pelo sinal, saúde frágil e os fixos
-    não mudam; no «esperar» só sobe o nível."""
-    dec, gl = txt(d.get("decisao")), d.get("nota_glob")
-    if not dec or not isinstance(gl, (int, float)) or MARCA_INT in dec or dec.startswith("Compra (fixo"):
+    """V223: decisão integrada. 1.º a melhor de duas classificações: a da Nota pelo Negócio/Preço (a decisão de sempre)
+    e a da Nota Global (≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra). 2.º se a classificação pela Nota pelos Ganhos
+    (≥ 3,9 / 3,5 / 3) estiver acima, sobe UM nível (mesmo que esteja 2 ou mais acima). Venda, manter pelo sinal,
+    saúde frágil e os fixos não mudam; no «esperar» só muda o nível."""
+    dec = txt(d.get("decisao"))
+    if not dec or MARCA_INT in dec or " · pela Nota Global" in dec or dec.startswith("Compra (fixo"):
         return d.get("decisao")
-    n_gl = 5 if gl >= GERAL_LIM[0] else 4 if gl >= GERAL_LIM[1] else 3 if gl >= GERAL_LIM[2] else None
-    if n_gl is None:
+    n0 = _nivel_dec(dec)
+    if n0 is None and not dec.startswith(MANTER_NOTA):
         return d.get("decisao")
-    n_ = _nivel_dec(dec)
-    if n_ is not None:
-        if n_gl <= n_:
-            return d.get("decisao")
-        return NIVEIS[n_gl] + dec[len(NIVEIS[n_]):] + MARCA_INT
-    if dec.startswith(("Manter (nota pelo negócio/preço baixa", "Manter (qualidade / saúde fracas)")):
-        return NIVEIS[n_gl] + f" (Nota Global {gl:.2f})".replace(".", ",") + MARCA_INT
-    return d.get("decisao")
+    n_ = n0 or 2
+    porq = []
+    n_gl = _nivel_nota(d.get("nota_glob"), GERAL_LIM)
+    if n_gl is not None and n_gl > n_:
+        n_ = n_gl
+        porq.append("Nota Global")
+    n_g5 = _nivel_nota(d.get("g_n5"), G5_LIM)
+    if n_g5 is not None and n_g5 > n_:
+        n_ += 1
+        porq.append("+1 pelos Ganhos")
+    if n_ == (n0 or 2):
+        return d.get("decisao")
+    marca = MARCA_INT + " (" + ", ".join(porq) + ")"
+    if n0 is not None:
+        return NIVEIS[n_] + dec[len(NIVEIS[n0]):] + marca
+    gl = d.get("nota_glob")
+    return NIVEIS[n_] + (f" (Nota Global {gl:.2f})".replace(".", ",") if isinstance(gl, (int, float)) else "") + marca
 
 
 def g_params(etf):
