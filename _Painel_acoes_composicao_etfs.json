@@ -1,0 +1,1113 @@
+{
+ "EXSA.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "ASML.AS",
+    "ASML Holding NV",
+    0.0406821
+   ],
+   [
+    "ROP.SW",
+    "Roche Holding AG Ordinary Shares new",
+    0.0228844
+   ],
+   [
+    "NOVN.SW",
+    "Novartis AG Registered Shares",
+    0.0204791
+   ],
+   [
+    "SHEL.L",
+    "Shell PLC",
+    0.0200023
+   ],
+   [
+    "HSBA.L",
+    "HSBC Holdings PLC",
+    0.0194892
+   ],
+   [
+    "AZN.L",
+    "AstraZeneca PLC",
+    0.019277101
+   ],
+   [
+    "NESN.SW",
+    "Nestle SA",
+    0.0176012
+   ],
+   [
+    "SAP.DE",
+    "SAP SE",
+    0.0157772
+   ],
+   [
+    "SIE.DE",
+    "Siemens AG",
+    0.0144708
+   ],
+   [
+    "TTE.PA",
+    "TotalEnergies SE",
+    0.014460599
+   ]
+  ],
+  "proxy": null
+ },
+ "EXW1.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "ASML.AS",
+    "ASML Holding NV",
+    0.097785704
+   ],
+   [
+    "SAP.DE",
+    "SAP SE",
+    0.048483502
+   ],
+   [
+    "SIE.DE",
+    "Siemens AG",
+    0.0444658
+   ],
+   [
+    "TTE.PA",
+    "TotalEnergies SE",
+    0.044452902
+   ],
+   [
+    "ALV.DE",
+    "Allianz SE",
+    0.038059298
+   ],
+   [
+    "SAN.MC",
+    "Banco Santander SA",
+    0.0346562
+   ],
+   [
+    "IBE.MC",
+    "Iberdrola SA",
+    0.0313682
+   ],
+   [
+    "SU.PA",
+    "Schneider Electric SE",
+    0.031339
+   ],
+   [
+    "BBVA.MC",
+    "Banco Bilbao Vizcaya Argentaria SA",
+    0.0268058
+   ],
+   [
+    "AI.PA",
+    "Air Liquide SA",
+    0.0263275
+   ]
+  ],
+  "proxy": null
+ },
+ "TDT.AS": {
+  "desc": null,
+  "hold": [
+   [
+    "SHEL.L",
+    "Shell PLC",
+    0.16873011
+   ],
+   [
+    "ASML.AS",
+    "ASML Holding NV",
+    0.1466925
+   ],
+   [
+    "ULVR.L",
+    "Unilever PLC",
+    0.1291666
+   ],
+   [
+    "INGA.AS",
+    "ING Groep NV",
+    0.083232
+   ],
+   [
+    "REL.L",
+    "RELX PLC",
+    0.066084296
+   ],
+   [
+    "PRX.AS",
+    "Prosus NV Ordinary Shares - Class N",
+    0.0453761
+   ],
+   [
+    "ASM.AS",
+    "ASM International NV",
+    0.0363135
+   ],
+   [
+    "AD.AS",
+    "Koninklijke Ahold Delhaize NV",
+    0.0294402
+   ],
+   [
+    "ADYEN.AS",
+    "Adyen NV",
+    0.026305301
+   ],
+   [
+    "ABN.AS",
+    "ABN AMRO Bank NV",
+    0.0246243
+   ]
+  ],
+  "proxy": null
+ },
+ "CAC.PA": {
+  "desc": null,
+  "hold": [
+   [
+    "TTE.PA",
+    "TotalEnergies SE",
+    0.0981792
+   ],
+   [
+    "SU.PA",
+    "Schneider Electric SE",
+    0.080963604
+   ],
+   [
+    "AIR.PA",
+    "Airbus SE",
+    0.0659337
+   ],
+   [
+    "MC.PA",
+    "Lvmh Moet Hennessy Louis Vuitton SE",
+    0.0536473
+   ],
+   [
+    "BNP.PA",
+    "BNP Paribas Act. Cat.A",
+    0.051838998
+   ],
+   [
+    "SAF.PA",
+    "Safran SA",
+    0.049471598
+   ],
+   [
+    "SAN.PA",
+    "Sanofi SA",
+    0.0493782
+   ],
+   [
+    "CS.PA",
+    "AXA SA",
+    0.0429182
+   ]
+  ],
+  "proxy": null
+ },
+ "EXS1.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "SAP.DE",
+    "SAP SE",
+    0.1199271
+   ],
+   [
+    "SIE.DE",
+    "Siemens AG",
+    0.1101238
+   ],
+   [
+    "ALV.DE",
+    "Allianz SE",
+    0.094257206
+   ],
+   [
+    "AIR.PA",
+    "Airbus SE",
+    0.063954905
+   ],
+   [
+    "ENR.DE",
+    "Siemens Energy AG Ordinary Shares",
+    0.0617263
+   ],
+   [
+    "DTE.DE",
+    "Deutsche Telekom AG",
+    0.051031698
+   ],
+   [
+    "MUV2.DE",
+    "Munchener Ruckversicherungs-Gesellschaft AG",
+    0.0406596
+   ],
+   [
+    "IFX.DE",
+    "Infineon Technologies AG",
+    0.0372914
+   ],
+   [
+    "DB1.DE",
+    "Deutsche Boerse AG",
+    0.0337231
+   ],
+   [
+    "DBK.DE",
+    "Deutsche Bank AG",
+    0.0324585
+   ]
+  ],
+  "proxy": null
+ },
+ "LYXIB.MC": {
+  "desc": null,
+  "hold": [
+   [
+    "SAN.MC",
+    "Banco Santander SA",
+    0.1598311
+   ],
+   [
+    "IBE.MC",
+    "Iberdrola SA",
+    0.154043
+   ],
+   [
+    "BBVA.MC",
+    "Banco Bilbao Vizcaya Argentaria SA",
+    0.1274959
+   ],
+   [
+    "ITX.MC",
+    "Industria De Diseno Textil SA Share From Split",
+    0.1099292
+   ],
+   [
+    "CABK.MC",
+    "CaixaBank SA",
+    0.0650834
+   ],
+   [
+    "FER",
+    "Ferrovial NV",
+    0.0387278
+   ],
+   [
+    "AENA.MC",
+    "Aena SME SA",
+    0.0341435
+   ],
+   [
+    "REP.MC",
+    "Repsol SA",
+    0.0334722
+   ],
+   [
+    "ACS.MC",
+    "ACS Actividades de Construccion y Servicios SA",
+    0.0266715
+   ],
+   [
+    "AMS.MC",
+    "Amadeus IT Group SA",
+    0.0257851
+   ]
+  ],
+  "proxy": null
+ },
+ "IMIB.MI": {
+  "desc": null,
+  "hold": [
+   [
+    "UCG.MI",
+    "UniCredit SpA",
+    0.13602239
+   ],
+   [
+    "ISP.MI",
+    "Intesa Sanpaolo",
+    0.131039
+   ],
+   [
+    "ENEL.MI",
+    "Enel SpA",
+    0.1024326
+   ],
+   [
+    "ENI.MI",
+    "Eni SpA",
+    0.0730246
+   ],
+   [
+    "RACE.MI",
+    "Ferrari NV",
+    0.060621
+   ],
+   [
+    "G.MI",
+    "Generali",
+    0.059198
+   ],
+   [
+    "PRY.MI",
+    "Prysmian SpA",
+    0.0471639
+   ],
+   [
+    "STMPA.PA",
+    "STMicroelectronics NV",
+    0.039055
+   ],
+   [
+    "BMPS.MI",
+    "Banca Monte dei Paschi di Siena",
+    0.031
+   ],
+   [
+    "LDO.MI",
+    "Leonardo SpA Az nom Post raggruppamento",
+    0.0304406
+   ]
+  ],
+  "proxy": null
+ },
+ "ISF.L": {
+  "desc": null,
+  "hold": [
+   [
+    "SHEL.L",
+    "Shell PLC",
+    0.092296496
+   ],
+   [
+    "HSBA.L",
+    "HSBC Holdings PLC",
+    0.085788295
+   ],
+   [
+    "AZN.L",
+    "AstraZeneca PLC",
+    0.0819712
+   ],
+   [
+    "RR.L",
+    "Rolls-Royce Holdings PLC",
+    0.0407168
+   ],
+   [
+    "ULVR.L",
+    "Unilever PLC",
+    0.0396451
+   ],
+   [
+    "BP.L",
+    "BP PLC",
+    0.0385359
+   ],
+   [
+    "BATS.L",
+    "British American Tobacco PLC",
+    0.0364981
+   ],
+   [
+    "GSK.L",
+    "GSK PLC",
+    0.0289707
+   ],
+   [
+    "RIO.L",
+    "Rio Tinto PLC Ordinary Shares",
+    0.0246929
+   ],
+   [
+    "NG.L",
+    "National Grid PLC",
+    0.024649799
+   ]
+  ],
+  "proxy": null
+ },
+ "CSSMI.SW": {
+  "desc": null,
+  "hold": [
+   [
+    "ROP.SW",
+    "Roche Holding AG Ordinary Shares new",
+    0.18231899
+   ],
+   [
+    "NOVN.SW",
+    "Novartis AG Registered Shares",
+    0.1643997
+   ],
+   [
+    "NESN.SW",
+    "Nestle SA",
+    0.1403233
+   ],
+   [
+    "UBSG.SW",
+    "UBS Group AG Registered Shares",
+    0.0774377
+   ],
+   [
+    "ABBN.SW",
+    "ABB Ltd",
+    0.070825905
+   ],
+   [
+    "ZURN.SW",
+    "Zurich Insurance Group AG",
+    0.0608597
+   ],
+   [
+    "CFR.SW",
+    "Compagnie Financiere Richemont SA Class A",
+    0.057337698
+   ],
+   [
+    "LONN.SW",
+    "Lonza Group Ltd",
+    0.0290666
+   ],
+   [
+    "SREN.SW",
+    "Swiss Re AG",
+    0.028969299
+   ],
+   [
+    "HOLN.SW",
+    "Holcim Ltd",
+    0.0237091
+   ]
+  ],
+  "proxy": null
+ },
+ "XACT-OMXS30.ST": {
+  "desc": null,
+  "hold": [
+   [
+    "SPOT",
+    "Spotify Technology SA",
+    0.1144716
+   ],
+   [
+    "VOLV-B.ST",
+    "Volvo AB Class B",
+    0.0642457
+   ],
+   [
+    "ATCO-A.ST",
+    "Atlas Copco AB Class A",
+    0.061791703
+   ],
+   [
+    "SAND.ST",
+    "Sandvik AB",
+    0.049477402
+   ],
+   [
+    "ASSA-B.ST",
+    "Assa Abloy AB Class B",
+    0.049065698
+   ],
+   [
+    "SWED-A.ST",
+    "Swedbank AB Class A",
+    0.042417403
+   ],
+   [
+    "SEB-A.ST",
+    "Skandinaviska Enskilda Banken AB Class A",
+    0.0399546
+   ],
+   [
+    "ERIC-B.ST",
+    "Telefonaktiebolaget L M Ericsson Class B",
+    0.0383945
+   ]
+  ],
+  "proxy": "EWD"
+ },
+ "SXR8.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.0769593
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.0757765
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.059299696
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.0360984
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.0251263
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.0237377
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.020750599
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.020235099
+   ],
+   [
+    "LLY",
+    "Eli Lilly and Co",
+    0.0173555
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.017241
+   ]
+  ],
+  "proxy": null
+ },
+ "SXRV.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.0817873
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.0801975
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.0630199
+   ],
+   [
+    "MU",
+    "Micron Technology Inc",
+    0.0448513
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.0421367
+   ],
+   [
+    "AMD",
+    "Advanced Micro Devices Inc",
+    0.036976
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.0341536
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0297509
+   ],
+   [
+    "WMT",
+    "Walmart Inc",
+    0.026965
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.026702499
+   ]
+  ],
+  "proxy": null
+ },
+ "EMIM.AS": {
+  "desc": null,
+  "hold": [
+   [
+    "2330.TW",
+    "Taiwan Semiconductor Manufacturing Co Ltd",
+    0.1389728
+   ],
+   [
+    "005930.KQ",
+    "Samsung Electronics Co Ltd",
+    0.061142
+   ],
+   [
+    "000660.KQ",
+    "SK hynix Inc",
+    0.0455066
+   ],
+   [
+    "0700.HK",
+    "Tencent Holdings Ltd",
+    0.0232592
+   ],
+   [
+    "9988.HK",
+    "Alibaba Group Holding Ltd Ordinary Shares",
+    0.0160427
+   ],
+   [
+    "2454.TW",
+    "MediaTek Inc",
+    0.0135103
+   ],
+   [
+    "00939",
+    "China Construction Bank Corp Class H",
+    0.0084995
+   ],
+   [
+    "005935",
+    "Samsung Electronics Co Ltd Pfd Registered Shs Non-Voting",
+    0.0080845
+   ],
+   [
+    "2317.TW",
+    "Hon Hai Precision Industry Co Ltd",
+    0.0071898
+   ],
+   [
+    "HDFCBANK.NS",
+    "HDFC Bank Ltd",
+    0.0064314995
+   ]
+  ],
+  "proxy": null
+ },
+ "VWCE.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.050283
+   ],
+   [
+    "AAPL",
+    "Apple Inc",
+    0.045436703
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.0359618
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.022807
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.0192134
+   ],
+   [
+    "2330.TW",
+    "Taiwan Semiconductor Manufacturing Co Ltd",
+    0.017896399
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.0154211
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0150444
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.014992599
+   ],
+   [
+    "MU",
+    "Micron Technology Inc",
+    0.0113361
+   ]
+  ],
+  "proxy": null
+ },
+ "IEGA.AS": {
+  "desc": null,
+  "hold": [],
+  "proxy": null
+ },
+ "IDTL.L": {
+  "desc": null,
+  "hold": [],
+  "proxy": null
+ },
+ "4GLD.DE": {
+  "desc": null,
+  "hold": [],
+  "proxy": null
+ },
+ "VWCE.MU": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.0433196
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.041505598
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.0337106
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.0202706
+   ],
+   [
+    "2330.TW",
+    "Taiwan Semiconductor Manufacturing Co Ltd",
+    0.0150761
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.014457
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.0131893
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0117531
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.0112158
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.0101548005
+   ]
+  ],
+  "proxy": "VT"
+ },
+ "VWCEM.XD": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.0433196
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.041505598
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.0337106
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.0202706
+   ],
+   [
+    "2330.TW",
+    "Taiwan Semiconductor Manufacturing Co Ltd",
+    0.0150761
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.014457
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.0131893
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0117531
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.0112158
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.0101548005
+   ]
+  ],
+  "proxy": "VT"
+ },
+ "VUAA.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.077090405
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.0759055
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.0594007
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.0361595
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.025172802
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.023777999
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0207858
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.0202657
+   ],
+   [
+    "LLY",
+    "Eli Lilly and Co",
+    0.017385
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.0172701
+   ]
+  ],
+  "proxy": null
+ },
+ "EUNL.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "AAPL",
+    "Apple Inc",
+    0.056238998
+   ],
+   [
+    "NVDA",
+    "NVIDIA Corp",
+    0.0522722
+   ],
+   [
+    "MSFT",
+    "Microsoft Corp",
+    0.040922098
+   ],
+   [
+    "AMZN",
+    "Amazon.com Inc",
+    0.025853802
+   ],
+   [
+    "GOOGL",
+    "Alphabet Inc Class A",
+    0.0182433
+   ],
+   [
+    "AVGO",
+    "Broadcom Inc",
+    0.0163748
+   ],
+   [
+    "META",
+    "Meta Platforms Inc Class A",
+    0.0150148
+   ],
+   [
+    "GOOG",
+    "Alphabet Inc Class C",
+    0.0144505
+   ],
+   [
+    "TSLA",
+    "Tesla Inc",
+    0.0127089
+   ],
+   [
+    "LLY",
+    "Eli Lilly and Co",
+    0.0126107
+   ]
+  ],
+  "proxy": null
+ },
+ "EUNK.DE": {
+  "desc": null,
+  "hold": [
+   [
+    "ASML.AS",
+    "ASML Holding NV",
+    0.0444192
+   ],
+   [
+    "ROP.SW",
+    "Roche Holding AG Ordinary Shares new",
+    0.024987299
+   ],
+   [
+    "SHEL.L",
+    "Shell PLC",
+    0.0227005
+   ],
+   [
+    "NOVN.SW",
+    "Novartis AG Registered Shares",
+    0.0216004
+   ],
+   [
+    "HSBA.L",
+    "HSBC Holdings PLC",
+    0.0213316
+   ],
+   [
+    "AZN.L",
+    "AstraZeneca PLC",
+    0.0205225
+   ],
+   [
+    "NESN.SW",
+    "Nestle SA",
+    0.0192407
+   ],
+   [
+    "SAP.DE",
+    "SAP SE",
+    0.0173436
+   ],
+   [
+    "SIE.DE",
+    "Siemens AG",
+    0.015565701
+   ],
+   [
+    "ALV.DE",
+    "Allianz SE",
+    0.013519
+   ]
+  ],
+  "proxy": null
+ },
+ "_sem_dados": [
+  "005935",
+  "00939"
+ ],
+ "_apagados": [
+  "ABN.AS",
+  "ACS.MC",
+  "ADSK",
+  "AKRBP.OL",
+  "ALV.DE",
+  "AMGN",
+  "BBVA.MC",
+  "BME.L",
+  "BMPS.MI",
+  "BNP.PA",
+  "CABK.MC",
+  "CS.PA",
+  "DBK.DE",
+  "DINO",
+  "DTE.DE",
+  "EMR",
+  "FER",
+  "FSLR",
+  "G.MI",
+  "GH",
+  "GOOG",
+  "GSK.L",
+  "HOLN.SW",
+  "IBE.MC",
+  "INGA.AS",
+  "INVP.L",
+  "ISP.MI",
+  "ISRG",
+  "LDO.MI",
+  "LONN.SW",
+  "MC.PA",
+  "MUV2.DE",
+  "NG.L",
+  "OVV",
+  "PFGC",
+  "PRY.MI",
+  "RGLD",
+  "RIO.L",
+  "SAND.ST",
+  "SPOT",
+  "SREN.SW",
+  "TMO",
+  "UCG.MI",
+  "USFD",
+  "VWS.CO",
+  "ZURN.SW"
+ ]
+}

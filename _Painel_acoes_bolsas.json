@@ -1,0 +1,458 @@
+{
+ "eur": {
+  "SHEL.L": {
+   "alt": "SHELL.AS",
+   "data": "16/11/2026"
+  },
+  "AZN.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "HSBA.L": {
+   "alt": "HBC1.DE",
+   "data": "16/11/2026"
+  },
+  "ULVR.L": {
+   "alt": "UNA.AS",
+   "data": "16/11/2026"
+  },
+  "BP.L": {
+   "alt": "BPE5.DE",
+   "data": "16/11/2026"
+  },
+  "BARC.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "LLOY.L": {
+   "alt": "LLD.DE",
+   "data": "16/11/2026"
+  },
+  "RR.L": {
+   "alt": "RRU.DE",
+   "data": "16/11/2026"
+  },
+  "BA.L": {
+   "alt": "BSP.DE",
+   "data": "16/11/2026"
+  },
+  "DGE.L": {
+   "alt": "GUI.DE",
+   "data": "16/11/2026"
+  },
+  "BATS.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "REL.L": {
+   "alt": "REN.AS",
+   "data": "16/11/2026"
+  },
+  "LSEG.L": {
+   "alt": "LS4C.DE",
+   "data": "16/11/2026"
+  },
+  "NESN.SW": {
+   "alt": "NESR.DE",
+   "data": "16/11/2026"
+  },
+  "ROP.SW": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "NOVN.SW": {
+   "alt": "NOT.DE",
+   "data": "16/11/2026"
+  },
+  "UBSG.SW": {
+   "alt": "0UB.DE",
+   "data": "16/11/2026"
+  },
+  "ABBN.SW": {
+   "alt": "ABJ.DE",
+   "data": "16/11/2026"
+  },
+  "CFR.SW": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "NOVO-B.CO": {
+   "alt": "NOV.DE",
+   "data": "16/11/2026"
+  },
+  "EQNR.OL": {
+   "alt": "DNQ.F",
+   "data": "16/11/2026"
+  },
+  "VOLV-B.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "ATCO-A.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "ERIC-B.ST": {
+   "alt": "ERCB.DE",
+   "data": "16/11/2026"
+  },
+  "AAPL": {
+   "alt": "APC.DE",
+   "data": "16/11/2026"
+  },
+  "MSFT": {
+   "alt": "MSF.DE",
+   "data": "16/11/2026"
+  },
+  "NVDA": {
+   "alt": "NVD.DE",
+   "data": "16/11/2026"
+  },
+  "AMZN": {
+   "alt": "AMZ.DE",
+   "data": "16/11/2026"
+  },
+  "GOOGL": {
+   "alt": "ABEA.DE",
+   "data": "16/11/2026"
+  },
+  "META": {
+   "alt": "FB2A.DE",
+   "data": "16/11/2026"
+  },
+  "TSLA": {
+   "alt": "TL0.DE",
+   "data": "16/11/2026"
+  },
+  "AVGO": {
+   "alt": "1YD.DE",
+   "data": "16/11/2026"
+  },
+  "LLY": {
+   "alt": "LLY.DE",
+   "data": "16/11/2026"
+  },
+  "UNH": {
+   "alt": "UNH.DE",
+   "data": "16/11/2026"
+  },
+  "XOM": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "CVX": {
+   "alt": "CHV.DE",
+   "data": "16/11/2026"
+  },
+  "JNJ": {
+   "alt": "JNJ.DE",
+   "data": "16/11/2026"
+  },
+  "PG": {
+   "alt": "PRG.DE",
+   "data": "16/11/2026"
+  },
+  "WMT": {
+   "alt": "WMT.DE",
+   "data": "16/11/2026"
+  },
+  "COST": {
+   "alt": "CTO.DE",
+   "data": "16/11/2026"
+  },
+  "HD": {
+   "alt": "HDI.DE",
+   "data": "16/11/2026"
+  },
+  "NFLX": {
+   "alt": "NFC.DE",
+   "data": "16/11/2026"
+  },
+  "AMD": {
+   "alt": "AMD.DE",
+   "data": "16/11/2026"
+  },
+  "BAC": {
+   "alt": "NCB.DE",
+   "data": "16/11/2026"
+  },
+  "KO": {
+   "alt": "CCC3.DE",
+   "data": "16/11/2026"
+  },
+  "PEP": {
+   "alt": "PEP.DE",
+   "data": "16/11/2026"
+  },
+  "MRK": {
+   "alt": "6MK.DE",
+   "data": "16/11/2026"
+  },
+  "ABBV": {
+   "alt": "4AB.DE",
+   "data": "16/11/2026"
+  },
+  "CRM": {
+   "alt": "FOO.DE",
+   "data": "16/11/2026"
+  },
+  "ADBE": {
+   "alt": "ADB.DE",
+   "data": "16/11/2026"
+  },
+  "CSCO": {
+   "alt": "CIS.DE",
+   "data": "16/11/2026"
+  },
+  "INTC": {
+   "alt": "INL.DE",
+   "data": "16/11/2026"
+  },
+  "QCOM": {
+   "alt": "QCI.DE",
+   "data": "16/11/2026"
+  },
+  "PLTR": {
+   "alt": "PTX.DE",
+   "data": "16/11/2026"
+  },
+  "UBER": {
+   "alt": "UT8.DE",
+   "data": "16/11/2026"
+  },
+  "DIS": {
+   "alt": "WDP.DE",
+   "data": "16/11/2026"
+  },
+  "MCD": {
+   "alt": "MDO.DE",
+   "data": "16/11/2026"
+  },
+  "IBM": {
+   "alt": "IBM.DE",
+   "data": "16/11/2026"
+  },
+  "PFE": {
+   "alt": "PFE.DE",
+   "data": "16/11/2026"
+  },
+  "MU": {
+   "alt": "MTE.DE",
+   "data": "16/11/2026"
+  },
+  "GS": {
+   "alt": "GOS.DE",
+   "data": "16/11/2026"
+  },
+  "WFC": {
+   "alt": "NWT.DE",
+   "data": "16/11/2026"
+  },
+  "ASSA-B.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "SWED-A.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "SEB-A.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "NDIA.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "FER": {
+   "alt": "8ZQ.SG",
+   "data": "16/11/2026"
+  },
+  "SPOT": {
+   "alt": "639.SG",
+   "data": "16/11/2026"
+  },
+  "TMO": {
+   "alt": "TN8.DE",
+   "data": "16/11/2026"
+  },
+  "AMGN": {
+   "alt": "AMG.DE",
+   "data": "16/11/2026"
+  },
+  "DINO": {
+   "alt": "HL80.SG",
+   "data": "16/11/2026"
+  },
+  "SNX": {
+   "alt": "SUX.DE",
+   "data": "16/11/2026"
+  },
+  "PFGC": {
+   "alt": "P5F.F",
+   "data": "16/11/2026"
+  },
+  "OVV": {
+   "alt": "47Q.F",
+   "data": "16/11/2026"
+  },
+  "PBF": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "USFD": {
+   "alt": "UFH.SG",
+   "data": "16/11/2026"
+  },
+  "BME.L": {
+   "alt": "7Z5.F",
+   "data": "16/11/2026"
+  },
+  "AKRBP.OL": {
+   "alt": "ARC.F",
+   "data": "16/11/2026"
+  },
+  "INVP.L": {
+   "alt": "IVKA.DU",
+   "data": "16/11/2026"
+  },
+  "THC": {
+   "alt": "THC1.DE",
+   "data": "16/11/2026"
+  },
+  "GH": {
+   "alt": "5GH.F",
+   "data": "16/11/2026"
+  },
+  "RBRK": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "RGLD": {
+   "alt": "RG3.SG",
+   "data": "16/11/2026"
+  },
+  "EMR": {
+   "alt": "EMR.F",
+   "data": "16/11/2026"
+  },
+  "ISRG": {
+   "alt": "IUI1.DE",
+   "data": "16/11/2026"
+  },
+  "ADSK": {
+   "alt": "AUD.F",
+   "data": "16/11/2026"
+  },
+  "FSLR": {
+   "alt": "F3A.DE",
+   "data": "16/11/2026"
+  },
+  "VWS.CO": {
+   "alt": "VWSB.DE",
+   "data": "16/11/2026"
+  },
+  "LONN.SW": {
+   "alt": "LO3.SG",
+   "data": "16/11/2026"
+  },
+  "ISF.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "CSSMI.SW": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "XACT-OMXS30.ST": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "IDTL.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "GSK.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "RIO.L": {
+   "alt": "RIO1.DE",
+   "data": "16/11/2026"
+  },
+  "NG.L": {
+   "alt": "NNGF.F",
+   "data": "16/11/2026"
+  },
+  "ZURN.SW": {
+   "alt": "ZFIN.MU",
+   "data": "16/11/2026"
+  },
+  "SREN.SW": {
+   "alt": "SR9.DE",
+   "data": "16/11/2026"
+  },
+  "HOLN.SW": {
+   "alt": "HLBN.DE",
+   "data": "16/11/2026"
+  },
+  "SAND.ST": {
+   "alt": "SVKB.F",
+   "data": "16/11/2026"
+  },
+  "GOOG": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "00939": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "DLEGF": {
+   "alt": null,
+   "data": "20/11/2026"
+  },
+  "CGXYY": {
+   "alt": null,
+   "data": "20/11/2026"
+  },
+  "ANT": {
+   "alt": null,
+   "data": "23/11/2026"
+  },
+  "005935": {
+   "alt": null,
+   "data": "24/11/2026"
+  }
+ },
+ "principal": {
+  "TSFA.F": {
+   "alt": "TSM",
+   "data": "16/11/2026"
+  },
+  "005930.KQ": {
+   "alt": "005935.KS",
+   "data": "16/11/2026"
+  },
+  "000660.KQ": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "NDIA.L": {
+   "alt": null,
+   "data": "16/11/2026"
+  },
+  "DKI.VI": {
+   "alt": "DKILY",
+   "data": "20/11/2026"
+  },
+  "DLEGF": {
+   "alt": null,
+   "data": "20/11/2026"
+  },
+  "CGXYY": {
+   "alt": null,
+   "data": "20/11/2026"
+  }
+ }
+}
