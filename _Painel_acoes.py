@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V224", "27/11/2026"
+VERSAO, DATA_VERSAO = "V225", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -3912,7 +3912,7 @@ def folha_pesos(wb):
     ws["C61"] = ("A nota geral mede o negócio, a tendência e o momento, mas não diz se o preço é bom para comprar. A NOTA "
                  "GLOBAL junta-lhe o nível de preço (5 muito barata … 1 muito cara): (nota geral × peso E62 + nível de "
                  "preço × peso E63) / (E62 + E63). Com 2 e 1: dois terços nota geral, um terço preço. Sem nível de preço "
-                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas, a da Nota Global (≥ 3,9 / 3,5 / 3) e a da nota pelo negócio/preço, mais um nível se a da Nota pelos Ganhos estiver acima; a do negócio/preço: ≥ 3,9 compra forte, "
+                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas, a da Nota Global (≥ 3,9 / 3,5 / 3) e a da nota pelo negócio/preço, mais um nível se a da Nota pelos Ganhos estiver acima (se a do negócio/preço estiver 2 níveis abaixo da dos ganhos, fica a da Nota Global); a do negócio/preço: ≥ 3,9 compra forte, "
                  "≥ 3,5 compra média, ≥ 3 compra (sem nível de preço: os limites da nota geral, 4,5 / 3,75 / 2,75); "
                  "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. Numa RECUPERAÇÃO depois de uma "
                  "queda (linhas 66-68) a decisão diz «(recuperação)»; o nível continua a ser o da nota pelo negócio/preço.")
@@ -9278,7 +9278,7 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "Período em anos em C4 (=4/52 para 4 semanas); um ponto a cada 3 a 5 dias de bolsa (C5), até 5 anos. Cores: verde escuro compra forte, verde compra média, "
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
                 "manter, vermelho venda. Quatro gráficos por título (V223): 1.º DECISÃO INTEGRADA (em cada data, a melhor das "
-                "classificações do 2.º e do 4.º e, se a do 3.º estiver acima, mais um nível; é a decisão das folhas Ações e ETFs); 2.º NOTA GLOBAL de cada data (Negócio/Preço + Ganhos, "
+                "classificações do 2.º e do 4.º e, se a do 3.º estiver acima, mais um nível; se a do 4.º estiver 2 níveis abaixo da do 3.º, fica a do 2.º; é a decisão das folhas Ações e ETFs); 2.º NOTA GLOBAL de cada data (Negócio/Preço + Ganhos, "
                 "pesos da folha Ponderações; ≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra); 3.º NOTA PELOS GANHOS (≥ 3,9 / 3,5 / 3; só "
                 "com as cotações até essa data); 4.º NOTA PELO NEGÓCIO/PREÇO (a decisão do painel sem a integração). Esperar e "
                 "venda vêm sempre da decisão. Os totais da tabela são os do 1.º.")
@@ -9524,9 +9524,13 @@ def calcular_historico():
             c_gl, c_ng, c_g5 = _his_classe(d_neg, gl_), _his_classe_global(d_neg), _his_classe(d_neg, gv_, G5_LIM)
             c_in = min(c_gl, c_ng, key=HIS_RANK.index)
             sobe = ("compra", "media", "forte")         # V223: ganhos acima -> sobe um nível (manter só o da nota)
-            if c_in in ("compra", "media") or (c_in == "manter" and txt(d_neg).startswith(MANTER_NOTA)):
+            pode = c_ng in sobe or (c_ng == "manter" and txt(d_neg).startswith(MANTER_NOTA))
+            n_ng = sobe.index(c_ng) if c_ng in sobe else -1
+            n_g5 = sobe.index(c_g5) if c_g5 in sobe else -1
+            if pode and n_g5 - n_ng >= 2:              # V225: negócio 2 níveis abaixo dos ganhos -> a da Nota Global
+                c_in = c_gl
+            elif c_in in ("compra", "media") or (c_in == "manter" and txt(d_neg).startswith(MANTER_NOTA)):
                 n_in = sobe.index(c_in) if c_in != "manter" else -1
-                n_g5 = sobe.index(c_g5) if c_g5 in sobe else -1
                 if n_g5 > n_in:
                     c_in = sobe[n_in + 1]
             for la, (lado, _) in enumerate(HIS_LADOS):
@@ -11632,7 +11636,8 @@ def decisao_integrada(d):
     """V223: decisão integrada. 1.º a melhor de duas classificações: a da Nota pelo Negócio/Preço (a decisão de sempre)
     e a da Nota Global (≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra). 2.º se a classificação pela Nota pelos Ganhos
     (≥ 3,9 / 3,5 / 3) estiver acima, sobe UM nível (mesmo que esteja 2 ou mais acima). Venda, manter pelo sinal,
-    saúde frágil e os fixos não mudam; no «esperar» só muda o nível."""
+    saúde frágil e os fixos não mudam; no «esperar» só muda o nível. V225: se a do negócio estiver 2 ou mais níveis
+    abaixo da dos ganhos, fica a da Nota Global (sem o +1)."""
     dec = txt(d.get("decisao"))
     if not dec or MARCA_INT in dec or " · pela Nota Global" in dec or dec.startswith("Compra (fixo"):
         return d.get("decisao")
@@ -11642,13 +11647,17 @@ def decisao_integrada(d):
     n_ = n0 or 2
     porq = []
     n_gl = _nivel_nota(d.get("nota_glob"), GERAL_LIM)
-    if n_gl is not None and n_gl > n_:
-        n_ = n_gl
-        porq.append("Nota Global")
     n_g5 = _nivel_nota(d.get("g_n5"), G5_LIM)
-    if n_g5 is not None and n_g5 > n_:
-        n_ += 1
-        porq.append("+1 pelos Ganhos")
+    if n_g5 is not None and n_gl is not None and n_g5 - n_ >= 2:
+        n_ = n_gl                                  # V225: negócio 2 ou mais níveis abaixo dos ganhos -> a da Nota Global
+        porq.append("pela Nota Global: negócio 2 níveis abaixo dos ganhos")
+    else:
+        if n_gl is not None and n_gl > n_:
+            n_ = n_gl
+            porq.append("Nota Global")
+        if n_g5 is not None and n_g5 > n_:
+            n_ += 1
+            porq.append("+1 pelos Ganhos")
     if n_ == (n0 or 2):
         return d.get("decisao")
     marca = MARCA_INT + " (" + ", ".join(porq) + ")"
