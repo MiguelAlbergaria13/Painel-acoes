@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V228", "27/11/2026"
+VERSAO, DATA_VERSAO = "V231", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1370,7 +1370,7 @@ def _fmt_cel_base(c, k, fmt):
     elif fmt == "int":
         c.number_format = "#,##0"
     elif fmt == "nivel":
-        c.number_format = "0.0"
+        c.number_format = "0.00"                  # V229
         c.font = Font(size=9, bold=True)
         c.alignment = Alignment(horizontal="left")
 
@@ -3338,7 +3338,7 @@ def nivel_preco(d):
         (f"preço {-J:+.0%} face ao valor justo".replace("+-", "−").replace("-", "−") if J is not None else None),
         (f"PER {pe:.0f}" if pe is not None else None),
         (f"FCF yield {fy:.1%}" if fy is not None else None)) if x)
-    return round(nv, 1), det                      # 1 casa: o número mostrado e o rótulo batem sempre certo
+    return round(nv, 2), det                      # V229: 2 casas (antes 1); o número mostrado e o rótulo batem certo
 
 
 def motivo_caro(d):
@@ -3349,8 +3349,8 @@ def motivo_caro(d):
     if nv is None or nv > PESOS["nivel_caro"]:
         return None
     if txt(d.get("tipo")) == "ETF":
-        return f"cara: nível de preço {nv:.1f}/5 (média das maiores ações do ETF; limite {PESOS['nivel_caro']:.1f})"
-    return f"cara: nível de preço {nv:.1f}/5 ({nivel_preco(d)[1]}; limite {PESOS['nivel_caro']:.1f})"
+        return f"cara: nível de preço {nv:.2f}/5 (média das maiores ações do ETF; limite {PESOS['nivel_caro']:.1f})"
+    return f"cara: nível de preço {nv:.2f}/5 ({nivel_preco(d)[1]}; limite {PESOS['nivel_caro']:.1f})"
 
 
 def _motivo_caro_antigo(d):
@@ -4599,13 +4599,13 @@ def ponderar_etfs(linhas, etfs, comp):
             if a is not None and isinstance(a.get("beta"), (int, float)):
                 soma_wb += w * a["beta"]
                 soma_wbn += w
-            partes.append(f"{nm} {w:.1%}".replace(".", ",") + (f" ({nt:.1f})".replace(".", ",") if nt is not None else ""))
+            partes.append(f"{nm} {w:.1%}".replace(".", ",") + (f" ({nt:.2f})".replace(".", ",") if nt is not None else ""))
         if partes:
             e["etf_comp"] = ((f"(aprox. pelo {c['proxy']}, mesmo índice) " if c.get("proxy") else "")
                              + "; ".join(partes) + f" · estas {len(partes)}: {total:.0%} do ETF".replace(".", ","))
         e["etf_acoes"] = round(soma_wn / soma_w, 2) if soma_w > 0 else None
         e["etf_caro"] = None
-        e["nivel_preco"] = round(soma_wc / soma_wcn, 1) if soma_wcn >= 0.15 else None
+        e["nivel_preco"] = round(soma_wc / soma_wcn, 2) if soma_wcn >= 0.15 else None
         if soma_wbn >= 0.15:                            # beta do ETF: média das ações conhecidas (senão o do Yahoo)
             e["beta"] = round(soma_wb / soma_wbn, 2)
         e["nota"] = nota_global(e)
@@ -6505,10 +6505,10 @@ function cartao(d){
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
   const G5=d.g5, GL=d.gl!=null?d.gl:NG;   // V221: em grande a Nota Global; em baixo Ganhos e Negócio/Preço
   const pq=(t,v,c)=>`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;padding:0 2px;background:${c}">${t} ${num(v,2)}</small>`;
-  let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL,d.lf):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,1)+'/5':''}">${GL==null?'–':num(GL,2)}${G5!=null?pq('ganhos',G5,corG5(G5,d.lf)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
+  let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL,d.lf):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,2)+'/5':''}">${GL==null?'–':num(GL,2)}${G5!=null?pq('ganhos',G5,corG5(G5,d.lf)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
   <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
-  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
+  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,2)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
   <div>Valor total<b>${d.vd!=null?eur(d.vd):'–'}${d.lpp!=null?` <span style="color:${d.lpp>=0?'#1e8e3e':'#d93025'}">(${pct2(d.lpp)})</span>`:''}</b></div>
   <div>Lucro / prejuízo<b>${d.le!=null?`<span style="color:${d.le>=0?'#1e8e3e':'#d93025'}">${d.le>=0?'+':'−'}${eur(Math.abs(d.le))}</span>`:'–'}</b></div></div>`:''}
   <div class="lv"><div class="rt">Compra</div><div>Preço compra (Limite)<b>${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -8736,7 +8736,7 @@ def calcular_evolucao():
         if len(escolhidas) == EVO_NA:
             break
     datas += [("data aleatória", d) for d in sorted(escolhidas)]
-    dias = sorted({d for _, d in datas})
+    dias = sorted({d for _, d in datas} | {fim})          # V231: + hoje, para acertar as notas pelas do painel
     sec = {}
     try:
         sec = sec_preparar([por_t[t] for t in cols if tipos[t] != "ETF"], dias[0], hoje)
@@ -8757,6 +8757,8 @@ def calcular_evolucao():
             for dia, v_ in g_notas_datas(lst_, todos_nm, etf_, dias).items():
                 for t, n_ in v_.items():
                     gn[(dia, t)] = n_
+    n_ac = _acertar_datas(dec, notas, gn, dias, {t: por_t[t] for t in cols})   # V231
+    print(f"   notas de cada data acertadas pelas de hoje do painel ({n_ac} títulos)")
 
     def nota(dia, t):                                  # V221: a Nota Global nessa data (Negócio/Preço + Ganhos)
         txt_, ng, nv = dec[(dia, t)]
@@ -9568,6 +9570,8 @@ def calcular_historico():
             ant_ = [x for x in grelha if x <= dia and x in gd]
             for t in meus:
                 g5[(dia, t)] = gd[ant_[-1]].get(t) if ant_ else None
+    n_ac = _acertar_datas(dec, notas_h, g5, dias, {t: d for t, d in zip(tks, linhas) if t in cols})   # V231
+    print(f"   notas de cada data acertadas pelas de hoje do painel ({n_ac} títulos)")
     for t, d in zip(tks, linhas):                  # último ponto: a nota pelos ganhos da tabela
         if t in cols and dias and isinstance(d.get("g_n5"), (int, float)):
             g5[(dias[-1], t)] = d.get("g_n5")
@@ -12172,7 +12176,7 @@ def g_calcular(acoes, todos_nm, p, etf_, pre=None, gravar=True):
             obs.append("sem nível de preço: fator 1")
         elif usar == "nivel":
             pe_u, f_pe = nv, (3.0 / nv) ** (1 / p["m"])
-            obs.append(f"nível {nv:.1f}")
+            obs.append(f"nível {nv:.2f}")
         elif usar == "tend" and tend is None:
             pe_u, f_pe = None, 1.0
             obs.append("sem tendência: fator 1")
@@ -12585,6 +12589,58 @@ def _sim_etf_hold(etfs, acoes):
     return out
 
 
+def _dec_reclass(tx, ng, lims):
+    """V231: a decisão de uma data com a nota pelo negócio/preço acertada: muda só o nível de compra (ou o «Manter»
+    da nota baixa); venda, manter pelo sinal, saúde frágil e o «esperar» ficam."""
+    n0 = _nivel_dec(tx)
+    if n0 is None and not tx.startswith(MANTER_NOTA):
+        return tx
+    n_ = 5 if ng >= lims[0] else 4 if ng >= lims[1] else 3 if ng >= lims[2] else None
+    if n_ == n0:
+        return tx
+    if n_ is None:
+        return f"Manter (nota pelo negócio/preço baixa: {ng:.2f})".replace(".", ",")
+    if n0 is not None:
+        return NIVEIS[n_] + tx[len(NIVEIS[n0]):]
+    return NIVEIS[n_] + f" (nota {ng:.2f})".replace(".", ",")
+
+
+def _acertar_datas(dec, notas_df, g5map, dias, painel):
+    """V231: as notas de datas passadas só usam cotações (sem qualidade, saúde, analistas e, fora dos EUA, o preço) e
+    ficavam mais altas do que as do painel. Acerto por título: soma-se a todas as datas a diferença entre a nota do
+    painel de hoje e a calculada assim na última data (dias[-1] = hoje); a decisão de cada data muda de nível a condizer.
+    painel = {ticker: linha da tabela}. Altera dec, notas_df e g5map."""
+    import pandas as pd
+    num_ = lambda v: isinstance(v, (int, float)) and v == v
+    if not dias:
+        return 0
+    ult, n_ok = dias[-1], 0
+    for t, d in painel.items():
+        e_ult = dec.get((ult, t))
+        ng_h = d.get("nota_geral") if num_(d.get("nota_geral")) else d.get("nota")
+        nv_h = d.get("nivel_preco")
+        if e_ult is not None and num_(ng_h) and num_(e_ult[1]):
+            off = float(ng_h) - float(e_ult[1])
+            lims = lims_ger(e_etf(d)) if num_(nv_h) else LIM_ETFS
+            for dia in dias:
+                e_ = dec.get((dia, t))
+                if not e_ or not num_(e_[1]):
+                    continue
+                ng2 = round(min(5.0, max(0.0, float(e_[1]) + off)), 2)
+                dec[(dia, t)] = (_dec_reclass(txt(e_[0]), ng2, lims), ng2, nv_h if num_(nv_h) else e_[2])
+            if notas_df is not None and t in notas_df.columns:
+                notas_df[t] = (notas_df[t].astype(float) + off).clip(0, 5)
+            n_ok += 1
+        g_h, g_u = d.get("g_n5"), g5map.get((ult, t)) if g5map is not None else None
+        if num_(g_h) and num_(g_u):
+            off = float(g_h) - float(g_u)
+            for dia in dias:
+                v_ = g5map.get((dia, t))
+                if num_(v_):
+                    g5map[(dia, t)] = round(min(5.0, max(0.0, float(v_) + off)), 2)
+    return n_ok
+
+
 def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None, etf_hold=None):
     """Nota geral do PAINEL (as mesmas regras: pontuar + nota_global) em cada dia de «dias», só com as cotações até
     esse dia (sem analistas, valor justo, qualidade e saúde, que não há para datas passadas: contam como o sinal,
@@ -12693,7 +12749,7 @@ def _sim_notas_painel(P, tipos, dias, sec=None, niveis=None, decisoes=None, etf_
                 if sw > 0:
                     d["etf_acoes"] = round(swn / sw, 2)
                 if swcn >= 0.15:                        # como na tabela: ≥ 15% do ETF em ações com nível de preço
-                    d["nivel_preco"] = round(swc / swcn, 1)
+                    d["nivel_preco"] = round(swc / swcn, 2)
             pontuar(d, float(pr))
             try:
                 nt = nota_global(d)
@@ -12985,6 +13041,7 @@ def simular():
     usa_g, usa_n = nota_u != SIM_NOTA[2], nota_u != SIM_NOTA[1]          # precisa da de ganhos / da de negócio
     for d in acoes + etfs:
         neg_ = d.get("nota_geral") if isinstance(d.get("nota_geral"), (int, float)) else d.get("nota")
+        d["_neg_hoje"], d["_gan_hoje"] = neg_, d.get("g_n5")          # V230: para acertar as notas de cada data
         d["nota"] = (d.get("g_n5") if nota_u == SIM_NOTA[1] else neg_ if nota_u == SIM_NOTA[2] else
                      (d.get("nota_glob") if isinstance(d.get("nota_glob"), (int, float)) else nota_glob(d)))
         if not isinstance(d["nota"], (int, float)):
@@ -13180,6 +13237,26 @@ def simular():
                         v_ = gd[ant_[-1]].get(t)
                         if isinstance(v_, (int, float)):
                             gnot.at[dia, t] = float(v_)
+        # V230: as notas de cada data só usam cotações (sem qualidade, saúde, analistas nem, fora dos EUA, o preço), por
+        # isso ficavam mais altas do que as do painel e quase tudo passava os mínimos. Acerto por título: a diferença
+        # entre a nota do painel de hoje e a nota calculada assim na última data soma-se a todas as datas.
+        hoje_n = {txt(d_.get("ticker")).upper(): (d_.get("_neg_hoje"), d_.get("_gan_hoje")) for d_ in acoes + etfs}
+
+        def _acertar(df_, i_):
+            if df_ is None or not len(df_.index):
+                return df_
+            df_ = df_.astype(float)
+            ult_ = df_.ffill().iloc[-1]
+            for t_ in df_.columns:
+                v_ = (hoje_n.get(t_) or (None, None))[i_]
+                if isinstance(v_, (int, float)) and pd.notna(ult_.get(t_)):
+                    df_[t_] = (df_[t_] + (float(v_) - float(ult_[t_]))).clip(0, 5)
+            return df_
+        if notas_neg is not None:
+            notas_neg = _acertar(notas_neg, 0)
+        if usa_g:
+            gnot = _acertar(gnot, 1)
+        print("   notas de cada data acertadas pelas de hoje do painel (a de hoje = a da tabela)")
         if nota_u == SIM_NOTA[1]:
             notas_p = gnot
         elif nota_u == SIM_NOTA[2]:
