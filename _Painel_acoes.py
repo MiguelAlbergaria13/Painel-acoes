@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V226", "27/11/2026"
+VERSAO, DATA_VERSAO = "V228", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1888,7 +1888,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
 # V211: as folhas Simulador e Histórico ficam como estão nas atualizações (copiadas do livro antigo, com gráficos e
 # tudo), enquanto a sua disposição não mudar de versão (marca escondida na célula MARCA_FOLHA)
 MARCA_FOLHA = "KN1"
-MARCAS_FIXAS = {"Simulador": "sim-L3", "Histórico": "his-L4"}   # V221: os dois refeitos 1 vez   # V217: Simulador refeito 1 vez; V218: Histórico refeito (2 gráficos por título)
+MARCAS_FIXAS = {"Simulador": "sim-L4", "Histórico": "his-L4"}   # V221: os dois refeitos 1 vez   # V217: Simulador refeito 1 vez; V218: Histórico refeito (2 gráficos por título)
 
 
 def marcar_folha_fixa(ws):
@@ -2218,8 +2218,7 @@ def longo_prazo(yf, tickers):
         return out
     print(f"A descarregar a história completa (mensal) de {len(tickers)} títulos, para a tendência de longo prazo...")
     try:
-        h = _cortar(_por_ticker(yf.download(tickers, period="max", interval="1mo", group_by="ticker",
-                                            auto_adjust=True, threads=True, progress=False), tickers))
+        h = _cortar(_yf_ajustado(yf, tickers, period="max", interval="1mo"))   # V227: ajuste verificado
     except Exception as e:
         print("   aviso: sem história longa:", e)
         return out
@@ -4853,6 +4852,45 @@ def _por_ticker(df, tickers):
     return out
 
 
+_AJ_MAUS = set()                                  # V227: tickers com o ajuste de dividendos do Yahoo errado
+
+
+def _ajustar_df(d, t=None):
+    """V227: «Close» passa a ser o fecho ajustado (dividendos reinvestidos) SÓ se o ajuste do Yahoo fizer sentido.
+    Em cotações de bolsas secundárias (ex.: DKI.VI, DNQ.F) o Yahoo aplica dividendos de outra moeda e o fator dá
+    valores absurdos (negativos ou centenas de vezes menores): aí fica o fecho sem ajuste."""
+    import numpy as np
+    if d is None or "Close" not in d or "Adj Close" not in d:
+        return d
+    c, a = d["Close"].astype(float), d["Adj Close"].astype(float)
+    r = (a / c).replace([np.inf, -np.inf], np.nan).dropna()
+    ok = len(r) > 0 and bool((r > 0).all()) and bool((r < 1.02).all())
+    if ok and len(r) > 1:
+        rr = (r / r.shift(1)).dropna()
+        ok = bool(((rr < 1.25) & (rr > 0.98)).all())        # cada dividendo < 20% do preço; o fator não recua
+        anos = max((r.index[-1] - r.index[0]).days / 365.25, 0.5)
+        ok = ok and (r.iloc[0] / r.iloc[-1]) ** (1 / anos) > 0.85   # em média menos de ~15%/ano de dividendos
+    d = d.copy()
+    if ok:
+        f = (a / c).where(lambda x: x > 0)
+        for k in ("Open", "High", "Low"):
+            if k in d:
+                d[k] = d[k] * f
+        d["Close"] = a
+    elif t:
+        _AJ_MAUS.add(t)
+    return d
+
+
+def _yf_ajustado(yf, tickers, **kw):
+    """V227: yf.download com dividendos reinvestidos verificados (ver _ajustar_df): {ticker: DataFrame}."""
+    kw.update(group_by="ticker", auto_adjust=False)
+    kw.setdefault("progress", False)
+    kw.setdefault("threads", True)
+    h = _por_ticker(yf.download(tickers, **kw), tickers)
+    return {t: _ajustar_df(d, t) for t, d in h.items()}
+
+
 def _incompleto(d):
     """Faltam dados que deviam vir (preço, história, médias ou, numa ação, a informação do Yahoo)?"""
     return (not d.get("preco") or d.get("max0") is None or d.get("mm200c") is None
@@ -6477,9 +6515,9 @@ function cartao(d){
   <div style="background:none;border:0"></div>
   <div class="rt">Vendas</div><div>Razoável<b>${pr(d.va)} <small>${pct(d.vap)}</small></b></div>
   <div class="red">Rede de segurança<b>${pr(d.vm)} <small>${pct(d.vmp)}</small></b>${d.vmc!=null?`<small style="display:block;color:${d.vmc>=0?'#1e8e3e':'#d93025'}">${d.vmc>=0?'ganhas':'perdes'} ${pct(Math.abs(d.vmc)).replace('+','')} sobre a tua compra</small>`:''}</div></div><div class="more">`;
-  if(d.ea!=null) h+=`<p><i>Nota ponderada das ações:</i> ${num(d.ea,1)}</p>`;
+  if(d.ea!=null) h+=`<p><i>Nota ponderada das ações:</i> ${num(d.ea,2)}</p>`;
   if(d.be!=null) h+=`<p><i>Beta:</i> ${num(d.be,2)} <small>(${d.be>1.2?'oscila mais do que o mercado':d.be<0.8?'mais defensiva do que o mercado':'acompanha o mercado'})</small></p>`;
-  if(d.q!=null||d.s!=null) h+=`<p><i>Qualidade:</i> ${d.q==null?'–':num(d.q,1)} · <i>Saúde:</i> ${d.s==null?'–':num(d.s,1)}</p>`;
+  if(d.q!=null||d.s!=null) h+=`<p><i>Qualidade:</i> ${d.q==null?'–':num(d.q,2)} · <i>Saúde:</i> ${d.s==null?'–':num(d.s,2)}</p>`;
   if(d.sd) h+=`<p class="${String(d.sd).startsWith('ALERTA')?'alerta':''}">${esc(d.sd)}</p>`;
   if(d.sg) h+=`<p><i>Médias 100/200:</i> ${esc(d.sg)}</p>`;
   if(d.lp) h+=`<p><i>Longo prazo:</i> ${esc(d.lp)}</p>`;
@@ -7321,8 +7359,7 @@ def _valorizacoes(yf, tickers, meses, minimo):
         lote = tickers[i:i + 200]
         print(f"   história mensal: {i + len(lote)} de {len(tickers)}...")
         try:
-            h = _por_ticker(yf.download(lote, period="max", interval="1mo", group_by="ticker", auto_adjust=True,
-                                        threads=True, progress=False), lote)
+            h = _yf_ajustado(yf, lote, period="max", interval="1mo")   # V227: ajuste verificado
         except Exception as e:
             print("   aviso:", e)
             continue
@@ -7889,8 +7926,7 @@ def etfs_significativos():
     if crit in CRITERIOS_ETF[2:4]:                     # pontuação / subida: com as cotações do último ano e meio
         lst = [t for t, _, _ in dados]
         try:
-            h = _por_ticker(yf.download(lst, period="18mo", interval="1d", group_by="ticker", auto_adjust=True,
-                                        threads=True, progress=False), lst)
+            h = _yf_ajustado(yf, lst, period="18mo", interval="1d")   # V227: ajuste verificado
         except Exception:
             h = {}
         for t in lst:
@@ -9829,7 +9865,7 @@ def folha_simulador(wb):
         r = int(cel[1:])
         ws[f"B{r}"] = rot
         ws[f"B{r}"].font = Font(bold=True)
-        entrada(cel, v, "dd/mm/yyyy" if r == 8 else None)
+        entrada(cel, v, "dd/mm/yyyy" if r == 8 else "0.00" if r == 13 else None)   # V228: nota mínima com 2 casas
         ws.merge_cells(f"C{r}:D{r}")
         if itens:
             lista(cel, itens)
@@ -9859,6 +9895,11 @@ def folha_simulador(wb):
                 f'"Nota mínima em cada data (a da F10) →",{_nu},{_nu},{_nn},{_nn},"Nível de preço mínimo (5 = muito barata) →",'
                 f'"Nível de preço mínimo em cada data (5 = muito barata) →")')
     ws["E6"].font = Font(bold=True, color="7030A0")
+    from openpyxl.styles.differential import DifferentialStyle as DS_
+    from openpyxl.formatting.rule import Rule as Rl_
+    from openpyxl.styles.numbers import NumberFormat as NF_
+    ws.conditional_formatting.add("F6", Rl_(type="expression", formula=[f"OR({cod_f}=3,{cod_f}=6,{cod_f}=11,{cod_f}=12)"],
+                                            dxf=DS_(numFmt=NF_(numFmtId=290, formatCode="0.00"))))   # V228: nota / nível 2 casas
     usa = {"F6": (2, 3, 5, 6, 9, 10, 11, 12), "C7:D7": (1, 2, 3, 5, 6, 9, 11), "C10:D10": (5, 6, 8, 10, 12),
            "C11:D11": (7, 8), "F11": (7, 8), "C12:D12": (7, 8), "F12": (7, 8), "C13:D13": (5, 8, 9, 10, 11, 12),
            "F7": (2, 3, 5, 6, 9, 11), "F9": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
@@ -12678,9 +12719,11 @@ def _sim_cotacoes_eur(tickers, moedas, ini, fim):
     from datetime import timedelta
     yf = _yf()
     pedir = sorted(set(tickers))
-    h = _por_ticker(yf.download(pedir, start=(ini - timedelta(days=10)).strftime("%Y-%m-%d"),
-                                end=(fim + timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d", group_by="ticker",
-                                auto_adjust=True, progress=False, threads=True), pedir)
+    h = _yf_ajustado(yf, pedir, start=(ini - timedelta(days=10)).strftime("%Y-%m-%d"),
+                     end=(fim + timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d")   # V227: ajuste verificado
+    maus_ = sorted(t for t in pedir if t in _AJ_MAUS)
+    if maus_:
+        print(f"   Dividendos do Yahoo errados em {', '.join(maus_)}: estes entram com as cotações sem dividendos.")
     precos = {}
     for t in pedir:
         df = h.get(t)
