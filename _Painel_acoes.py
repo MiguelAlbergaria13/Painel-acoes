@@ -361,7 +361,7 @@ COLS = _cols + [("moeda_alt", "Moeda alternativa", 6, "txt", "ind"),
 OCULTAS = ("moeda_alt", "fx_alt", "desat", "corr", "lp10", "lp5", "val_sempre", "val10", "val5", "val3", "val1", "inc1a", "r2_1a", "inc6m", "r2_6m", "mm50", "arranque", "sub60", "max1a", "inc60", "rec_a", "rec_e", "vol1a", "rec_media", "fator_tend", "so_caro", "nota_sc", "pe_fwd", "etf_caro", "pe_hab",
            "compra", "compra_alt", "compra_pct")     # compra razoável (trigger): já não se usa; fica só a compra máxima   # corr: corretora (escondida por agora; os valores ficam)
 # larguras mais estreitas e letra 9 em algumas colunas
-_LARG = {"decisao": 18, "preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp": 30, "qual": 6, "saude_n": 6,
+_LARG = {"decisao": 30, "preco_hora": 10, "pont": 7, "etf_acoes": 7, "etf_desc": 24, "etf_comp": 30, "qual": 6, "saude_n": 6,
          "div": 6, "div_alt": 6, "div_yield": 6, "payout": 6, "sinal": 14, "saude": 14, "lp_txt": 14}
 COLS = [(k, h, _LARG.get(k, w), f, g) for k, h, w, f, g in COLS]
 # V190: a nota pelos ganhos (antes nas folhas «nota alternativa») entra nas folhas Ações / ETFs, logo a seguir ao preço
@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V232", "27/11/2026"
+VERSAO, DATA_VERSAO = "V233", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1677,7 +1677,10 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
                           (f"${bl}{L0+1}>1.2", "FCE4D6", "1C1E21")):
         ws.conditional_formatting.add(faixa("beta"), FormulaRule(formula=[f"AND(ISNUMBER(${bl}{L0+1}),{cond})"],
                                       fill=PatternFill("solid", bgColor=cor), font=Font(color=fc), stopIfTrue=True))
-    # V222: «Compra …*: esperar (?)» sem lilás nas folhas (fica com o verde da compra); o lilás só nos gráficos do histórico
+    # V233: «… esperar (?)» sempre a roxo (RGB 112, 48, 160), letra branca
+    ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
+        formula=[f'ISNUMBER(SEARCH(": esperar",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="7030A0"),
+        font=Font(color="FFFFFF", bold=True), stopIfTrue=True))
     ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
         formula=[f'ISNUMBER(SEARCH("saúde frágil",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="F8CBAD"),
         font=Font(color="C00000", bold=True), stopIfTrue=True))
@@ -4109,7 +4112,7 @@ COMPRA_NAS_DESCIDAS = True    # V189: abaixo só da média de 50 dias já não �
 MARGEM_M200 = 0.05            # V191: até 5% abaixo da média de 200 dias também se compra (teste 2002-2025, 5 520 casos:
                               # +9,0% a 1 ano contra +7,5% à espera da média 200 e +10,1% a comprar sempre; 10% piores
                               # −26%, −23% e −28%)
-COR_ESPERA = "D9C3E9"          # «Compra …: esperar (…)»: lilás (o azul já é «cara»)     # nota pelo negócio/preço: compra forte / média / compra (a média com o preço puxa para o meio)
+COR_ESPERA = "7030A0"          # «Compra …: esperar (…)»: lilás (o azul já é «cara»)     # nota pelo negócio/preço: compra forte / média / compra (a média com o preço puxa para o meio)
 
 
 def compra_espera(d):
@@ -6499,7 +6502,7 @@ const eur=v=>'€ '+num(v,2);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function cartao(d){
   const dc=d.dc||'';
-  const corDec=dc.includes(': esperar')?'#D9C3E9':dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
+  const corDec=dc.includes(': esperar')?'#7030A0':dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
   const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v,d.lf):cor(v);   // nota pelo negócio/preço (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
@@ -6508,7 +6511,7 @@ function cartao(d){
   let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL,d.lf):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,2)+'/5':''}">${GL==null?'–':num(GL,2)}${G5!=null?pq('ganhos',G5,corG5(G5,d.lf)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
   <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
-  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,2)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
+  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec};${dc.includes(': esperar')?'color:#fff;font-weight:700':''}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,2)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
   <div>Valor total<b>${d.vd!=null?eur(d.vd):'–'}${d.lpp!=null?` <span style="color:${d.lpp>=0?'#1e8e3e':'#d93025'}">(${pct2(d.lpp)})</span>`:''}</b></div>
   <div>Lucro / prejuízo<b>${d.le!=null?`<span style="color:${d.le>=0?'#1e8e3e':'#d93025'}">${d.le>=0?'+':'−'}${eur(Math.abs(d.le))}</span>`:'–'}</b></div></div>`:''}
   <div class="lv"><div class="rt">Compra</div><div>Preço compra (Limite)<b>${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -6541,7 +6544,7 @@ const nPt=v=>{const x=parseFloat(String(v).replace(/\s|€|%/g,'').replace(',','
 const corT=d=>d.np!=null?corG(d.ngc,d.lf):cor(d.ngc);
 const corG5=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2?'#F4B183':v>=1?'#FFEB9C':'#F8696B';   // V221: Nota pelos Ganhos
 const corGL=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';   // V221: Nota Global   // ações com nível de preço: 3,9/3,5/3; ETFs: 4,5/3,75/2,75
-function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#D9C3E9':/saúde frágil/i.test(dc)?'#F8CBAD':
+function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#7030A0':/saúde frágil/i.test(dc)?'#F8CBAD':
   dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':
   dc.startsWith('Compra forte')?'#63BE7B':dc.startsWith('Compra média')?'#A9D18E':dc.startsWith('Compra')?'#E2EFDA':'#FFEB9C';}
 function compra(){
@@ -6622,7 +6625,7 @@ function calcCompra(){
   }
   g('cr').innerHTML=h;
 }
-const dc_=d=>(d.dc||'').includes(': esperar')?'color:#5B2C83;font-weight:700':(d.dc||'').startsWith('Venda')?'font-weight:700':'';
+const dc_=d=>(d.dc||'').includes(': esperar')?'color:#fff;font-weight:700':(d.dc||'').startsWith('Venda')?'font-weight:700':'';
 function ligarCompra(){
   const cp=document.getElementById('cp');                       // % sempre com o símbolo (60%, não 0,6)
   cp.addEventListener('focus',()=>{cp.value=cp.value.replace('%','').trim();});
@@ -9066,7 +9069,8 @@ def folha_compra(wb):
         fill=PatternFill("solid", bgColor="DDEBF7")))
     # decisão: as mesmas cores das folhas Ações / ETFs
     dcl = f"${CDC}{a0}"
-    for f_, cor, fnt in ((f'ISNUMBER(SEARCH("saúde frágil",{dcl}))', "F8CBAD", Font(color="C00000", bold=True)),
+    for f_, cor, fnt in ((f'ISNUMBER(SEARCH(": esperar",{dcl}))', "7030A0", Font(color="FFFFFF", bold=True)),   # V233: roxo
+                         (f'ISNUMBER(SEARCH("saúde frágil",{dcl}))', "F8CBAD", Font(color="C00000", bold=True)),
                          (f'LEFT({dcl},5)="Venda"', "F8696B", Font(bold=True)),
                          (f'ISNUMBER(SEARCH("Longo Prazo",{dcl}))', "F4B183", None),
                          (f'LEFT({dcl},6)="Manter"', "FFEB9C", None)):
