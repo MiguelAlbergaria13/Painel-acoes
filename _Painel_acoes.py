@@ -399,7 +399,7 @@ G_AJUDA_CAB = {                                         # V199/V200: notas nos c
                "ETFs: 18,5% → 5, 13,5% → 4, 10% → 3, 5% → 2, 0% → 0). Cores: as da Nota pelos Ganhos.",
     "nota_glob": "NOTA GLOBAL (a nota de ordenação): Nota pelo Negócio/Preço × peso + Nota pelos Ganhos × peso, "
                  "a dividir pela soma dos pesos (folha Ponderações; por omissão 50% / 50%). Se faltar uma das duas, "
-                 "fica a outra. Cores: verde (≥ 3,9) … vermelho.",
+                 "fica a outra. Cores: verde-escuro a partir da nota da folha Ponderações (E78 ações, E79 ETFs; 4 por omissão) … vermelho.",
     "g_simples": "RENT. ANUAL SIMPLES: (preço final ÷ preço inicial)^(1/anos) − 1. Só olha para o primeiro e o "
                  "último dia do período (uma única compra no início).\n"
                  "• Data de cálculo (fim) e Extensão (anos para trás) definem o período.\n"
@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V225", "27/11/2026"
+VERSAO, DATA_VERSAO = "V226", "27/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1360,7 +1360,7 @@ def _fmt_cel_base(c, k, fmt):
     if k in ("bolsa", "horario"):                 # bolsa e horário: letra 9
         c.font = Font(size=9)
     elif fmt == "nota":
-        c.number_format = "0.0"
+        c.number_format = "0.00"                  # V226: notas com 2 casas
         c.alignment = Alignment(horizontal="center")
         if k in ("nota", "nota_geral"):
             c.font = Font(bold=True)
@@ -1702,7 +1702,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         ngl = let(COL["nota_geral"])
         # limites: ações com nível de preço 3,9 / 3,5 / 3; ETFs e ações sem nível de preço 4,5 / 3,75 / 2,75
         for i_, cor in enumerate(("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
-            la, le = (LIM_ACOES + (2.25, 1.5, -99))[i_], (LIM_ETFS + (2.25, 1.5, -99))[i_]
+            la, le = (lims_ger(not ranking) + (2.25, 1.5, -99))[i_], (LIM_ETFS + (2.25, 1.5, -99))[i_]   # V226
             lim = f"IF(ISNUMBER(${nvl}{L0+1}),{la},{le})" if la != le else la   # ETFs com nível (das ações) = ações
             ws.conditional_formatting.add(faixa("nota_geral"), FormulaRule(
                 formula=[f"AND(ISNUMBER(${ngl}{L0+1}),${ngl}{L0+1}>={lim})"], fill=PatternFill("solid", bgColor=cor),
@@ -3029,7 +3029,7 @@ PESOS_PROPOSTOS = {"pont": 0.30, "qual": 0.30, "saude": 0.20, "tend": 0.20,
                    "ft_mult": 2.0, "ft_r2": 1, "ft_lim": 0.60, "ft_vol": 1, "ft_vol0": 0.25, "ft_volpen": 0.03,
                    "ft_sub": 0.05, "ft_sub_etf": 0.02, "ft_vol0_etf": 0.35,
                    "ft_bonus": 1, "ft_bmax": 0.09, "ft_bvol": 0.20, "g_nota": 2.0, "g_preco": 1.0,
-                   "rec_jan": 45, "rec_jan_etf": 60, "usar_analistas": 1, "w_neg": 0.5, "w_gan": 0.5}
+                   "rec_jan": 45, "rec_jan_etf": 60, "usar_analistas": 1, "w_neg": 0.5, "w_gan": 0.5, "lim_fa": 4.0, "lim_fe": 4.0}
 CALIB = {}                 # calibração da nota pelo negócio/preço com os analistas (último cálculo)
 FICH_CALIB = os.path.join(PASTA_AUX, BASE + "_calibracao_nota_geral.json")
 # Fator de tendência (folha Ponderações): média ponderada das inclinações das retas (desde sempre, 10 e 5 anos com
@@ -3136,7 +3136,8 @@ def carregar_pesos(ex=None):
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "B62:E63"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "B67:E68"},
                         {"op": "ler", "folha": FOLHA_PESOS, "rng": "D71:E71"},
-                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B74:E75"}])
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B74:E75"},
+                        {"op": "ler", "folha": FOLHA_PESOS, "rng": "B78:E79"}])
             antiga = not txt(r[3][0][0]).startswith("ETFs: tendência")   # folha da V039: sem os quadros novos
             if antiga:
                 r[1][2][0], r[2][0][0], r[2][1][0] = 0, 0, 0
@@ -3185,6 +3186,13 @@ def carregar_pesos(ex=None):
                 if k_:
                     try:
                         lidos[k_] = pc(lin[3])
+                    except (TypeError, ValueError):
+                        pass
+            for lin in (r[17] if len(r) > 17 else []):                 # V226: verde-escuro / compra forte
+                k_ = {LIMF_TXT[0]: "lim_fa", LIMF_TXT[1]: "lim_fe"}.get(txt(lin[0]))
+                if k_:
+                    try:
+                        lidos[k_] = max(3.5, min(5.0, float(str(lin[3]).replace(",", "."))))
                     except (TypeError, ValueError):
                         pass
             for lin in (r[14] if len(r) > 14 else []):                 # janelas da compra forte (V148)
@@ -3390,6 +3398,7 @@ REC_QUEDA, REC_QUEDA_ETF, REC_I60 = -0.15, -0.20, 0.30   # recuperação (V148)
 REC_JANELA, REC_JANELA_ETF, REC_PROTEGE, REC_MEMO = 45, 60, 63, 130
 REC_JAN_TXT, REC_JAN_ETF_TXT = "Janela da compra forte (ações)", "Janela da compra forte (ETFs)"
 USAR_ANALISTAS_TXT = "Ignorar os analistas no sinal (x):"
+LIMF_TXT = ("Ações: verde-escuro (compra forte) a partir de", "ETFs: verde-escuro (compra forte) a partir de")   # V226 (linhas 78-79)
 NG_W_TXT = ("Peso da Nota pelo Negócio/Preço", "Peso da Nota pelos Ganhos")   # V221: Nota Global (linhas 74-75)   # V162 (V160-V161: «Usar …», ignorado)
 REC_VOL = 0.4      # a queda exigida é pelo menos 0,4 × a volatilidade anual (Tesla 60% -> queda ≥ 24%): nos títulos
 #                    muito voláteis uma queda de 15% é banal (testado: menos sinais e mais certeiros)
@@ -3912,7 +3921,7 @@ def folha_pesos(wb):
     ws["C61"] = ("A nota geral mede o negócio, a tendência e o momento, mas não diz se o preço é bom para comprar. A NOTA "
                  "GLOBAL junta-lhe o nível de preço (5 muito barata … 1 muito cara): (nota geral × peso E62 + nível de "
                  "preço × peso E63) / (E62 + E63). Com 2 e 1: dois terços nota geral, um terço preço. Sem nível de preço "
-                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas, a da Nota Global (≥ 3,9 / 3,5 / 3) e a da nota pelo negócio/preço, mais um nível se a da Nota pelos Ganhos estiver acima (se a do negócio/preço estiver 2 níveis abaixo da dos ganhos, fica a da Nota Global); a do negócio/preço: ≥ 3,9 compra forte, "
+                 "(p. ex. ETFs sem ações conhecidas), a nota pelo negócio/preço é a nota geral. A DECISÃO (integrada, V223) é a melhor de duas, a da Nota Global (≥ verde-escuro de E78/E79 / 3,5 / 3) e a da nota pelo negócio/preço, mais um nível se a da Nota pelos Ganhos estiver acima (se a do negócio/preço estiver 2 níveis abaixo da dos ganhos, fica a da Nota Global); a do negócio/preço: ≥ 3,9 compra forte, "
                  "≥ 3,5 compra média, ≥ 3 compra (sem nível de preço: os limites da nota geral, 4,5 / 3,75 / 2,75); "
                  "como sempre, só há compra com o sinal ≥ 3 e venda com o sinal 1. Numa RECUPERAÇÃO depois de uma "
                  "queda (linhas 66-68) a decisão diz «(recuperação)»; o nível continua a ser o da nota pelo negócio/preço.")
@@ -3990,6 +3999,21 @@ def folha_pesos(wb):
         e_.fill, e_.border, e_.font = amarelo, borda, Font(bold=True, size=12)
         ws.cell(i, 4).number_format = e_.number_format = "0%"
         ws.cell(i, 4).alignment = e_.alignment = Alignment(horizontal="center", vertical="center")
+    # --- V226: a partir de que nota fica verde-escuro (compra forte) ---
+    ws.cell(77, 2, "Verde-escuro = compra forte").font = Font(bold=True, size=12)
+    ws["C77"] = ("Nota a partir da qual fica VERDE-ESCURO (compra forte) na Nota Global, na Nota pelos Ganhos e na Nota "
+                 "pelo Negócio/Preço das ações com nível de preço (nos ETFs sem nível de preço esta fica 4,5). Conta nas cores "
+                 "de todas as folhas e da app, na decisão integrada, na Compra e no Histórico. Média a partir de 3,5 e "
+                 "compra a partir de 3 (fixos). Entre 3,5 e 5.")
+    ws["C77"].alignment, ws["C77"].font = Alignment(wrap_text=True, vertical="top"), Font(size=9)
+    ws.row_dimensions[77].height = 52
+    for i, (nome, kp) in enumerate(((LIMF_TXT[0], "lim_fa"), (LIMF_TXT[1], "lim_fe")), 78):
+        ws.cell(i, 2, nome).font = Font(bold=True)
+        ws.cell(i, 4, PESOS_PROPOSTOS[kp]).font = Font(color="808080")
+        e_ = ws.cell(i, 5, PESOS.get(kp, PESOS_PROPOSTOS[kp]))
+        e_.fill, e_.border, e_.font = amarelo, borda, Font(bold=True, size=12)
+        ws.cell(i, 4).number_format = e_.number_format = "0.00"
+        ws.cell(i, 4).alignment = e_.alignment = Alignment(horizontal="center", vertical="center")
     ws["C21"].font = Font(italic=True, size=8, color="595959")
     ws["C21"].alignment = Alignment(wrap_text=True, vertical="center")
     ws.row_dimensions[21].height = 30
@@ -4060,6 +4084,26 @@ def sobre_compra(d):
 
 GERAL_LIM = (3.9, 3.5, 3.0)                  # V223: verde-escuro (compra forte) a partir de 3,9
 G5_LIM = (3.9, 3.5, 3.0, 2.0, 1.0)      # V221: cores da Nota pelos Ganhos (verde-escuro … vermelho), limites próprios
+def lim_forte(etf=False):
+    """V226: nota a partir da qual fica verde-escuro / compra forte (folha Ponderações, E78 ações, E79 ETFs)."""
+    try:
+        return max(3.5, min(5.0, float(PESOS.get("lim_fe" if etf else "lim_fa", 4.0))))
+    except (TypeError, ValueError):
+        return 4.0
+
+
+def lims_ger(etf=False):
+    return (lim_forte(etf),) + GERAL_LIM[1:]
+
+
+def lims_g5(etf=False):
+    return (lim_forte(etf),) + G5_LIM[1:]
+
+
+def e_etf(d):
+    return txt((d or {}).get("tipo")) == "ETF"
+
+
 LIM_ACOES = GERAL_LIM          # ações: nota pelo negócio/preço (com o nível de preço) -> compra forte / média / compra
 LIM_ETFS = (4.5, 3.75, 2.75)   # ETFs e ações sem nível de preço: a nota pelo negócio/preço é a nota geral (escala não comprimida)
 COMPRA_NAS_DESCIDAS = True    # V189: abaixo só da média de 50 dias já não é motivo para esperar
@@ -4083,7 +4127,7 @@ def compra_espera(d):
     ng, nt = d2.get("nota_geral"), d2.get("nota")
     n_conf = ng if isinstance(ng, (int, float)) and isinstance(d2.get("nivel_preco"), (int, float)) else nt
     if isinstance(ng, (int, float)) and isinstance(d2.get("nivel_preco"), (int, float)):
-        nivel = 5 if ng >= GERAL_LIM[0] else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
+        nivel = 5 if ng >= lim_forte(e_etf(d)) else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
     elif isinstance(nt, (int, float)):
         nivel = 5 if nt >= 4.5 else 4 if nt >= 3.75 else 3 if nt >= 2.75 else None
     else:
@@ -4151,7 +4195,7 @@ def decisao_global(d):
     nt = nt if isinstance(nt, (int, float)) else p
     ng = d.get("nota_geral")
     if isinstance(ng, (int, float)) and isinstance(d.get("nivel_preco"), (int, float)):   # pela nota pelo negócio/preço (com preço)
-        nivel = 5 if ng >= GERAL_LIM[0] else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
+        nivel = 5 if ng >= lim_forte(e_etf(d)) else 4 if ng >= GERAL_LIM[1] else 3 if ng >= GERAL_LIM[2] else None
     else:                                              # sem nível de preço: a nota pelo negócio/preço é a global, limites de sempre
         nivel = 5 if nt >= 4.5 else 4 if nt >= 3.75 else 3 if nt >= 2.75 else None
     mom = momento_compra(d)                            # V151: a recuperação não muda o nível; só fica indicada
@@ -6408,7 +6452,7 @@ const corNivel=v=>{const m=(a,b,t)=>Math.round(a+(b-a)*t),h=(r,g,b)=>'#'+[r,g,b]
   const c=t<=3?[m(0xF8,255,(t-1)/2),m(0x69,255,(t-1)/2),m(0x6B,255,(t-1)/2)]:[m(255,0x63,(t-3)/2),m(255,0xBE,(t-3)/2),m(255,0x7B,(t-3)/2)];
   return [h(...c),'#1c1e21'];};
 const cor=v=>v==null?'#d0d3d8':v>=4.5?'#63BE7B':v>=3.75?'#A9D18E':v>=2.75?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';
-const corG=v=>v==null?'#d0d3d8':v>=3.9?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';
+const corG=(v,f)=>v==null?'#d0d3d8':v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';
 const num=(v,c)=>v==null?'–':v.toLocaleString('pt-PT',{minimumFractionDigits:c,maximumFractionDigits:c});
 const pct=v=>v==null?'':(v>0?'+':'')+num(v*100,1)+'%';
 const pct2=v=>v==null?'':(v>0?'+':'')+num(v*100,2)+'%';
@@ -6419,11 +6463,11 @@ function cartao(d){
   const dc=d.dc||'';
   const corDec=dc.includes(': esperar')?'#D9C3E9':dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
-  const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v):cor(v);   // nota pelo negócio/preço (geral + preço)
+  const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v,d.lf):cor(v);   // nota pelo negócio/preço (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
   const G5=d.g5, GL=d.gl!=null?d.gl:NG;   // V221: em grande a Nota Global; em baixo Ganhos e Negócio/Preço
-  const pq=(t,v,c)=>`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;padding:0 2px;background:${c}">${t} ${num(v,1)}</small>`;
-  let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,1)+'/5':''}">${GL==null?'–':num(GL,1)}${G5!=null?pq('ganhos',G5,corG5(G5)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
+  const pq=(t,v,c)=>`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;padding:0 2px;background:${c}">${t} ${num(v,2)}</small>`;
+  let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL,d.lf):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,1)+'/5':''}">${GL==null?'–':num(GL,2)}${G5!=null?pq('ganhos',G5,corG5(G5,d.lf)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
   <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
   ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,1)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
@@ -6456,9 +6500,9 @@ const cmpX=()=>{let c=null;try{c=JSON.parse(localStorage.getItem('cmp_x')||'null
   if(c&&(c.ts||0)<tsX)c=null;
   return c||{nq:(D.cmp&&D.cmp.nq)||[],nd:(D.cmp&&D.cmp.nd)||[]};};
 const nPt=v=>{const x=parseFloat(String(v).replace(/\s|€|%/g,'').replace(',','.'));return isNaN(x)?null:x;};
-const corT=d=>d.np!=null?corG(d.ngc):cor(d.ngc);
-const corG5=v=>v>=3.9?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2?'#F4B183':v>=1?'#FFEB9C':'#F8696B';   // V221: Nota pelos Ganhos
-const corGL=v=>v>=3.9?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';   // V221: Nota Global   // ações com nível de preço: 3,9/3,5/3; ETFs: 4,5/3,75/2,75
+const corT=d=>d.np!=null?corG(d.ngc,d.lf):cor(d.ngc);
+const corG5=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2?'#F4B183':v>=1?'#FFEB9C':'#F8696B';   // V221: Nota pelos Ganhos
+const corGL=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';   // V221: Nota Global   // ações com nível de preço: 3,9/3,5/3; ETFs: 4,5/3,75/2,75
 function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#D9C3E9':/saúde frágil/i.test(dc)?'#F8CBAD':
   dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':
   dc.startsWith('Compra forte')?'#63BE7B':dc.startsWith('Compra média')?'#A9D18E':dc.startsWith('Compra')?'#E2EFDA':'#FFEB9C';}
@@ -6490,14 +6534,14 @@ function calcCompra(){
   if(c.p>0&&c.p<=1)c.p*=100;
   const porT=new Map([...D.a,...D.e].map(d=>[String(d.t||'').toUpperCase(),d]));
   for(const k of ['a','e'])for(let i=0;i<5;i++){const d=porT.get(g('fs'+k+i).value),b=g('fn'+k+i),v=d?(d.gl??d.ng??d.nt):null;  // V167: nota atual (V221: a Nota Global)
-    b.textContent=v==null?'':num(v,2);b.style.background=v==null?'transparent':corGL(v);}
+    b.textContent=v==null?'':num(v,2);b.style.background=v==null?'transparent':corGL(v,d&&d.lf);}
   for(const k of ['a','e']){const l=[];for(let i=0;i<5;i++){const t=g('fs'+k+i).value;let v=nPt(g('fp'+k+i).value);
     if(v!=null&&v>1)v/=100;if(t&&v>0)l.push([t,Math.round(v*10000)/10000]);}c['f'+k]=l;}   // V164: fixos
   const c0=cmpCfg();
   if(['a','e','t','p','s','h','vq','vd','vn'].some(k=>c[k]!==c0[k])||JSON.stringify(c.fa)!==JSON.stringify((c0.fa||[]).map(x=>[x[0],x[1]]))||JSON.stringify(c.fe)!==JSON.stringify((c0.fe||[]).map(x=>[x[0],x[1]]))){c.ts=Date.now();try{localStorage.setItem('cmp_cfg',JSON.stringify(c));}catch(e){}}
   const X=cmpX(),nq=new Set(X.nq),nd=new Set(X.nd),q=(document.getElementById('q').value||'').trim().toLowerCase();
   const txtN=(v,L)=>v>=L[0]?'= Compra forte':v>=L[1]?'= Compra média':v>=L[2]?'= Compra':'= abaixo de Compra (entram títulos que o painel não aconselha comprar)';
-  const LA=[3.9,3.5,3],LE=[4.5,3.75,2.75];
+  const LA=[(D.a[0]&&D.a[0].lf)||4,3.5,3],LE=[(D.e[0]&&D.e[0].lf)||4,3.5,3];
   g('cx').textContent=`Nota Global: ações ≥ ${num(c.a,2)} · ETFs ≥ ${num(c.e,2)} · ações ${eur(c.t*c.p/100)} · ETFs ${eur(c.t*(1-c.p/100))}`;
   let h='';
   const todosT=new Map([...D.a,...D.e].map(d=>[String(d.t||'').toUpperCase(),d]));
@@ -6526,7 +6570,7 @@ function calcCompra(){
     const vis=d=>acha(d)&&(c.vq||!nq.has(T(d)))&&(c.vd||!nd.has(T(d)))&&(c.vn||wd(d)*val>=0.005);   // 0 € (também com o grupo a 0 €)
     const cards=esc_.filter(vis).map(d=>{
       const f=fora(d),w=wd(d),v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
-      return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corGL(d.ngc)}" title="Nota Global (dá os montantes) · em baixo: Ganhos e Negócio/Preço">${num(d.ngc,2)}${d.g5!=null?`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;background:${corG5(d.g5)}">ganhos ${num(d.g5,1)}</small>`:''}${(d.ng??d.nt)!=null?`<small style="display:block;font-size:9.5px;font-weight:400;margin-top:1px">negócio ${num(d.ng??d.nt,1)}</small>`:''}</div>
+      return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corGL(d.ngc,d.lf)}" title="Nota Global (dá os montantes) · em baixo: Ganhos e Negócio/Preço">${num(d.ngc,2)}${d.g5!=null?`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;background:${corG5(d.g5,d.lf)}">ganhos ${num(d.g5,2)}</small>`:''}${(d.ng??d.nt)!=null?`<small style="display:block;font-size:9.5px;font-weight:400;margin-top:1px">negócio ${num(d.ng??d.nt,2)}</small>`:''}</div>
       <div class="nm"><b>${d.fixo!=null?'📌 ':''}${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}${d.fixo!=null?' <small style="font-weight:400;color:var(--mu)">(fixo)</small>':''}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
       <div class="px">${eur(v)}<span>${num(w*100,1)}% do grupo</span></div></div>
       <span class="dec" style="background:${corDecF(d)};${dc_(d)}">${esc(d.dc)}${d.dc0?` <small style="font-weight:400">(no painel: ${esc(d.dc0)})</small>`:''}</span>
@@ -7172,7 +7216,7 @@ def pagina_html(linhas, etfs, texto):
     def item(d):
         return {"n": txt(d.get("nome")), "c": txt(d.get("codigo")), "t": txt(d.get("ticker")), "m": txt(d.get("moeda")),
                 "p": num(d.get("preco")), "nt": num(d.get("nota")), "ng": num(d.get("nota_geral")), "dc": txt(d.get("decisao")), "pt": num(d.get("pont")),
-                "gn": num(d.get("g_nota")), "g5": num(d.get("g_n5")), "gl": num(d.get("nota_glob")),
+                "gn": num(d.get("g_nota")), "g5": num(d.get("g_n5")), "gl": num(d.get("nota_glob")), "lf": lim_forte(e_etf(d)),
                 "np": num(d.get("nivel_preco")), "be": num(d.get("beta")), "pr": num(d.get("pe")), "ca": 1 if d.get("so_caro") == 1 else 0,
                 "nr": rotulo_nivel(d.get("nivel_preco")) or None,
                 "nc": "#" + COR_NIVEL[rotulo_nivel(d.get("nivel_preco"))] if rotulo_nivel(d.get("nivel_preco")) else None,
@@ -8400,7 +8444,7 @@ EVO_V = 4                        # V221: pela Nota Global (e «esperar» opciona
 EVO_COR_F, EVO_COR_M, EVO_COR_T = "1E7B34", "A9D18E", "7F7F7F"
 EVO_FIXAS = (("há 5 anos", 60), ("há 3 anos", 36), ("há 1 ano", 12), ("há 6 meses", 6))   # (rótulo, meses)
 EVO_NA = 5                         # datas aleatórias
-EVO_LIM_PADRAO = ((3.9, 3.5), (3.9, 3.5), (3.9, 3.5))   # V206: nota pelos ganhos   # V155: (forte, média) ações / ETFs com nível de preço / sem nível
+EVO_LIM_PADRAO = ((4.0, 3.5), (4.0, 3.5), (4.0, 3.5))   # V206: nota pelos ganhos   # V155: (forte, média) ações / ETFs com nível de preço / sem nível
 EVO_LIM_ROT = ("Ações (com nível de preço)", "ETFs (com nível de preço)", "Sem nível de preço")
 EVO_SALTO, EVO_PARADO = 0.40, 20   # V155: cotações suspeitas: ≥ 2 dias com ±40% ou mais, ou ≥ 20 dias seguidos sem mexer
 
@@ -8465,7 +8509,7 @@ def folha_evolucao(wb):
             c = ws.cell(4 + i, 10 + j, (lim[i] if i < len(lim) else EVO_LIM_PADRAO[i])[j])
             c.fill, c.number_format = PatternFill("solid", fgColor="FFF2CC"), "0.00"
             c.alignment = Alignment(horizontal="center")
-    ws["L4"] = ("Nota Global; por omissão 3,9 / 3,5. Só conta quem tem compra nesse dia (sinal ≥ 3, sem saúde "
+    ws["L4"] = ("Nota Global; por omissão 4 / 3,5. Só conta quem tem compra nesse dia (sinal ≥ 3, sem saúde "
                 "frágil; os «esperar» conforme N3).")
     ws["L3"] = "Comprar os «esperar» →"
     ws["L3"].font, ws["L3"].alignment = Font(bold=True, size=9), Alignment(horizontal="right")
@@ -8786,7 +8830,9 @@ def calcular_evolucao():
 # ================================================================================================ Simulador
 FOLHA_COMPRA = "Compra"
 FICH_COMPRA = os.path.join(PASTA_AUX, BASE + "_compra.json")
-COMPRA_PADRAO = {"min_a": 3.5, "min_e": 3.5, "total": 1000.0, "pct_a": 0.6, "so_compra": "x", "detidos": "x"}
+COMPRA_PADRAO = {"min_a": 3.5, "min_e": 3.5, "total": 1000.0, "pct_a": 0.6, "so_compra": "x", "detidos": "x", "esperar": "x"}
+CMP_ESP_TXT = "Contar com os «esperar» (x)"     # V226: D10
+CMP_ESP_FORA = 'AND(UPPER(TRIM($D$10))<>"X",ISNUMBER(SEARCH(": esperar",${c}{r})))'   # V226: «esperar» fora da conta
 CMP_L0 = 21                     # primeira linha da tabela de resultados da folha Compra (V163: 13 -> 19; V166: 21)
 CMP_NFIX = 5                    # V163: títulos fixos por grupo (ticker + % do grupo); V166: 3 -> 5
 CMP_FIX_L = 13                  # 1.ª linha dos fixos (ações: C nome, D ticker, E %; ETFs: G nome, H ticker, I %)
@@ -8840,7 +8886,8 @@ def folha_compra(wb):
                 ("C6", "Valor total a investir (€)", "D6", p["total"], '#,##0.00 "€"'),
                 ("C7", "Distribuição: % em ações", "D7", p["pct_a"], "0%"),
                 ("C8", "Só com decisão de compra (sinal ≥ 3) (x)", "D8", p["so_compra"], "@"),
-                ("C9", "Incluir os que já tenho (x)", "D9", p["detidos"], "@"))
+                ("C9", "Incluir os que já tenho (x)", "D9", p["detidos"], "@"),
+                ("C10", CMP_ESP_TXT, "D10", p.get("esperar", "x"), "@"))
     for cb, rot, cv, v, fm in entradas:
         ws[cb] = rot
         ws[cb].font = Font(bold=True)
@@ -8856,11 +8903,13 @@ def folha_compra(wb):
         ws[c_].font = Font(bold=True, color="7030A0")
     ws["E8"] = "Sem x: entram também os de nota alta com o sinal ainda fraco (a decisão diz porquê)."
     ws["E9"] = "Sem x: só títulos que ainda não tens."
-    for c_ in ("E8", "E9"):
+    ws["E10"] = ("Sem x: os de decisão «… esperar (?)» ficam na tabela a cinzento, riscados e com 0 € (como os «Não quero»); "
+                 "o valor passa para os outros do grupo. Muda logo, sem recalcular.")
+    for c_ in ("E8", "E9", "E10"):
         ws[c_].font = Font(italic=True, size=9, color="808080")
     botao(ws, "K4", "▶ CALCULAR COMPRA", "painelacoes://compra", "548235", "375623", 14)
     ws.merge_cells("K4:M5")
-    ws["K7"] = ("Nota Global (Negócio/Preço + Ganhos, pesos na folha Ponderações): cores ≥ 3,9 verde escuro · ≥ 3,5 "
+    ws["K7"] = ("Nota Global (Negócio/Preço + Ganhos, pesos na folha Ponderações): cores ≥ verde-escuro da Ponderações (E78/E79, 4 por omissão) · ≥ 3,5 "
                 "verde · ≥ 3 verde claro · ≥ 2,25 laranja · ≥ 1,5 amarelo · abaixo, vermelho")
     ws["K7"].font = Font(size=9, color="595959")
     # --- fixos (V163) ---
@@ -8914,7 +8963,7 @@ def folha_compra(wb):
         c0_ = f"{cnt_}{CMP_FIX_L}"
         esc_ = f"ISNUMBER(INDEX('{fl_}'!${lnv}:${lnv},MATCH(${cn}{CMP_FIX_L},'{fl_}'!${la}:${la},0)))"
         for i_, cor in enumerate(("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
-            la_ = le_ = (GERAL_LIM + (2.25, 1.5, -99))[i_]          # V221: escala da Nota Global
+            la_ = le_ = (lims_ger(k == "fixos_e") + (2.25, 1.5, -99))[i_]   # V221: escala da Nota Global (V226: Ponderações)
             ws.conditional_formatting.add(rr_, FRn_(
                 formula=[f"AND(ISNUMBER({c0_}),{c0_}>=IF({esc_},{la_},{le_}))"],
                 fill=PatternFill("solid", bgColor=cor), stopIfTrue=True))
@@ -8962,14 +9011,16 @@ def folha_compra(wb):
     ws.conditional_formatting.add(f"{CQ}{a0}:{CND}{an}", FR(          # colunas A e B: amarelas nos títulos
         formula=[f'AND(${CTK}{a0}<>"",LEFT(${CT}{a0},5)<>"Total")'], fill=PatternFill("solid", bgColor="FFF2CC")))
     ws.conditional_formatting.add(f"{CT}{a0}:{CTEM}{an}", FR(          # excluído: cinzento riscado
-        formula=[f'OR(LOWER(TRIM(${CQ}{a0}))="x",LOWER(TRIM(${CND}{a0}))="x")'], font=Font(color="A6A6A6", strike=True),
+        formula=[f'OR(LOWER(TRIM(${CQ}{a0}))="x",LOWER(TRIM(${CND}{a0}))="x",'
+                 f'AND(ISNUMBER(${CPS}{a0}),{CMP_ESP_FORA.format(c=CDC, r=a0)}))'], font=Font(color="A6A6A6", strike=True),
         stopIfTrue=True))
     for col_, cond_ in ((CNT, f'AND(ISNUMBER(${CNT}{a0}),${CNT}{a0}>={{lim}})'),
                         (CDC, f'AND(${CDC}{a0}<>"",ISNUMBER(${CNT}{a0}),${CNT}{a0}>={{lim}})')):
         if col_ == CDC:
             continue                                  # a decisão tem as suas regras mais abaixo
         for i_, cor in enumerate(("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
-            lim = (GERAL_LIM + (2.25, 1.5, -99))[i_]               # V221: escala da Nota Global
+            la_, le_ = (lims_ger(False) + (2.25, 1.5, -99))[i_], (lims_ger(True) + (2.25, 1.5, -99))[i_]
+            lim = f'IF(${CTP}{a0}="ETF",{le_},{la_})' if la_ != le_ else la_   # V226: verde-escuro por tipo
             ws.conditional_formatting.add(f"{col_}{a0}:{col_}{an}", FR(
                 formula=[cond_.format(lim=lim)], fill=PatternFill("solid", bgColor=cor), stopIfTrue=True))
     ws.conditional_formatting.add(f"{CT}{a0}:{CTEM}{an}", FR(
@@ -9007,8 +9058,9 @@ def _num_ou(v, padrao=None):
 def calcular_compra():
     """▶ CALCULAR COMPRA (folha Compra)."""
     ex = Excel(FICHEIRO)
-    r = ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": "D4:D9"}])
+    r = ex.ops([{"op": "ler", "folha": FOLHA_COMPRA, "rng": "D4:D10"}, {"op": "ler", "folha": FOLHA_COMPRA, "rng": "C10"}])
     vals = [lin[0] for lin in r[0]]
+    nova_esp = len(r) > 1 and txt(r[1][0][0]) == CMP_ESP_TXT   # V226: folha já com «Contar com os esperar»
     p = dict(COMPRA_PADRAO)
     for k, v in zip(("min_a", "min_e", "total", "pct_a"), vals[:4]):
         x = _num_ou(v)
@@ -9018,6 +9070,7 @@ def calcular_compra():
         p["pct_a"] /= 100
     p["so_compra"] = "x" if txt(vals[4]).lower() == "x" else ""
     p["detidos"] = "x" if txt(vals[5]).lower() == "x" else ""
+    p["esperar"] = ("x" if txt(vals[6]).lower() == "x" else "") if nova_esp and len(vals) > 6 else "x"
     g = _ler_json(FICH_COMPRA, {})
     fl = CMP_FIX_L + CMP_NFIX - 1                 # V163: fixos (ticker, % do grupo)
     try:
@@ -9156,9 +9209,11 @@ def calcular_compra():
             pr = d.get("preco")
             fx = 1.0 if txt(d.get("moeda")) == "EUR" else (d.get("fx_alt") if txt(d.get("moeda_alt")) == "EUR" else None)
             tk = txt(d.get("ticker"))
-            fora = f'OR(LOWER(TRIM(${CQ}{r_}))="x",LOWER(TRIM(${CND}{r_}))="x")'
-            peso = (f'=IF(OR({fora},${CVIS}{r_}=0),0,IFERROR(${CNT}{r_}/SUMIFS({R(CNT)},{R(CTP)},"{tipo}",{R(CQ)},"<>x",'
-                    f'{R(CND)},"<>x",{R(CVIS)},1,{R(CFIX)},0),0)*MAX(0,1-{soma_fx}))')   # escondido = 0; V163: menos os fixos
+            fora = (f'OR(LOWER(TRIM(${CQ}{r_}))="x",LOWER(TRIM(${CND}{r_}))="x",'
+                    + CMP_ESP_FORA.format(c=CDC, r=r_) + ")")            # V226: e os «esperar» sem x em D10
+            den_ = f'SUMIFS({R(CNT)},{R(CTP)},"{tipo}",{R(CQ)},"<>x",{R(CND)},"<>x",{R(CVIS)},1,{R(CFIX)},0'
+            den_ = f'IF(UPPER(TRIM($D$10))="X",{den_}),{den_},{R(CDC)},"<>*: esperar*"))'
+            peso = (f'=IF(OR({fora},${CVIS}{r_}=0),0,IFERROR(${CNT}{r_}/{den_},0)*MAX(0,1-{soma_fx}))')   # escondido = 0; V163: menos os fixos
             linhas.append(["x" if tk.upper() in excluir else "", "x" if tk.upper() in indisp else "",
                            txt(d.get("nome")) or tk, tk, tipo, round(ng, 2), txt(d.get("decisao")), pr, d.get("teto"),
                            d.get("teto_pct"), peso, f"={CPS}{r_}*{val_g}",
@@ -9279,7 +9334,7 @@ def folha_historico(wb, linhas=(), etfs=()):
                 "verde claro compra, lilás «compra, mas esperar» (boa e barata, mas a tendência ainda não virou), cinzento "
                 "manter, vermelho venda. Quatro gráficos por título (V223): 1.º DECISÃO INTEGRADA (em cada data, a melhor das "
                 "classificações do 2.º e do 4.º e, se a do 3.º estiver acima, mais um nível; se a do 4.º estiver 2 níveis abaixo da do 3.º, fica a do 2.º; é a decisão das folhas Ações e ETFs); 2.º NOTA GLOBAL de cada data (Negócio/Preço + Ganhos, "
-                "pesos da folha Ponderações; ≥ 3,9 forte, ≥ 3,5 média, ≥ 3 compra); 3.º NOTA PELOS GANHOS (≥ 3,9 / 3,5 / 3; só "
+                "pesos da folha Ponderações; forte a partir do verde-escuro da Ponderações, ≥ 3,5 média, ≥ 3 compra); 3.º NOTA PELOS GANHOS (idem; só "
                 "com as cotações até essa data); 4.º NOTA PELO NEGÓCIO/PREÇO (a decisão do painel sem a integração). Esperar e "
                 "venda vêm sempre da decisão. Os totais da tabela são os do 1.º.")
     ws["B2"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -9521,7 +9576,9 @@ def calcular_historico():
             if dia == dias[-1] and isinstance(todas.get(t, {}).get("nota_glob"), (int, float)):
                 gl_ = todas[t]["nota_glob"]
             d_neg = dt_neg.get(t, dcs[0]) if dia == dias[-1] else dcs[0]
-            c_gl, c_ng, c_g5 = _his_classe(d_neg, gl_), _his_classe_global(d_neg), _his_classe(d_neg, gv_, G5_LIM)
+            etf_ = e_etf(todas.get(t))
+            c_gl, c_ng = _his_classe(d_neg, gl_, lims_ger(etf_)), _his_classe_global(d_neg)
+            c_g5 = _his_classe(d_neg, gv_, lims_g5(etf_))
             c_in = min(c_gl, c_ng, key=HIS_RANK.index)
             sobe = ("compra", "media", "forte")         # V223: ganhos acima -> sobe um nível (manter só o da nota)
             pode = c_ng in sobe or (c_ng == "manter" and txt(d_neg).startswith(MANTER_NOTA))
@@ -11646,8 +11703,8 @@ def decisao_integrada(d):
         return d.get("decisao")
     n_ = n0 or 2
     porq = []
-    n_gl = _nivel_nota(d.get("nota_glob"), GERAL_LIM)
-    n_g5 = _nivel_nota(d.get("g_n5"), G5_LIM)
+    n_gl = _nivel_nota(d.get("nota_glob"), lims_ger(e_etf(d)))      # V226: verde-escuro da Ponderações
+    n_g5 = _nivel_nota(d.get("g_n5"), lims_g5(e_etf(d)))
     if n_g5 is not None and n_gl is not None and n_g5 - n_ >= 2:
         n_ = n_gl                                  # V225: negócio 2 ou mais níveis abaixo dos ganhos -> a da Nota Global
         porq.append("pela Nota Global: negócio 2 níveis abaixo dos ganhos")
@@ -11779,13 +11836,13 @@ def g_topo(wb, ws, etf):
         f"{c5}{L0 + 1}:{let(COL['g_ajust'])}{L0 + MAX_LINHAS}",
         FormulaRule(formula=[f'LEFT(${let(COL["decisao"])}{L0 + 1},5)="Venda"'],
                     fill=PatternFill("solid", bgColor="F4B6C2"), font=Font(bold=True, color="9C0006"), stopIfTrue=True))
-    for lim, cor in zip(G5_LIM + (-99,), ("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
+    for lim, cor in zip(lims_g5(etf) + (-99,), ("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
         ws.conditional_formatting.add(                  # V221: Nota pelos Ganhos e rent. ajustada: limites próprios
             f"{c5}{L0 + 1}:{let(COL['g_ajust'])}{L0 + MAX_LINHAS}",
             FormulaRule(formula=[f"AND(ISNUMBER(${c5}{L0 + 1}),${c5}{L0 + 1}>={lim})"],
                         fill=PatternFill("solid", bgColor=cor), font=Font(bold=True), stopIfTrue=True))
     cg = let(COL["nota_glob"])
-    for lim, cor in zip(GERAL_LIM + (2.25, 1.5, -99), ("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
+    for lim, cor in zip(lims_ger(etf) + (2.25, 1.5, -99), ("63BE7B", "A9D18E", "E2EFDA", "F4B183", "FFEB9C", "F8696B")):
         ws.conditional_formatting.add(                  # V221: Nota Global: verde … vermelho
             f"{cg}{L0 + 1}:{cg}{L0 + MAX_LINHAS}",
             FormulaRule(formula=[f"AND(ISNUMBER(${cg}{L0 + 1}),${cg}{L0 + 1}>={lim})"],
@@ -13324,7 +13381,7 @@ def _cmp_formatar(ws):
                 c.alignment = Alignment(horizontal="center", wrap_text=True, vertical="center")
             for i in range(10):
                 for j in (c0 + 2, c0 + 3):
-                    ws.cell(r0 + 3 + i, j).number_format = "0.0"
+                    ws.cell(r0 + 3 + i, j).number_format = "0.00"
             ws.cell(r0 + 14, c0).font = Font(italic=True, size=9)
         ws.row_dimensions[r0 + 1].height = 50
         ws.row_dimensions[r0 + 2].height = 30
