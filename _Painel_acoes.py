@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V234", "28/11/2026"
+VERSAO, DATA_VERSAO = "V235", "28/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -5267,6 +5267,10 @@ foreach ($o in $req.ops) {
       }
     } else { $l = New-Object System.Collections.ArrayList; [void]$l.Add($v); [void]$linhas.Add($l) }
     [void]$res.Add($linhas)
+  } elseif ($o.op -eq 'fonte') {
+    try { $h = [string]$o.cor; if (-not $h) { $h = '000000' }; $rg.Font.Size = [double]$o.tam; $rg.Font.Bold = [bool]$o.negrito
+          $rg.Font.Color = [Convert]::ToInt32($h.Substring(4,2) + $h.Substring(2,2) + $h.Substring(0,2), 16) } catch {}
+    [void]$res.Add($null)
   } else {
     $nr = $o.valores.Count; $nc = $o.valores[0].Count
     $arr = New-Object 'object[,]' $nr, $nc
@@ -5409,6 +5413,15 @@ def _ops_pywin32(livro, ops, guardar):
         rg = wb.Worksheets(o["folha"]).Range(o["rng"])
         if o["op"] == "ler":
             res.append(_como_linhas(rg.Value2))
+        elif o["op"] == "fonte":                      # V235: tamanho, negrito e cor
+            try:
+                h_ = o.get("cor") or "000000"
+                rg.Font.Size = o.get("tam") or 11
+                rg.Font.Bold = bool(o.get("negrito"))
+                rg.Font.Color = int(h_[4:6] + h_[2:4] + h_[0:2], 16)
+            except Exception:
+                pass
+            res.append(None)
         else:
             rg.Value2 = [list(r) for r in o["valores"]]
             for j_ in o.get("preto") or []:                # V234: nomes com ligação: preto, sem sublinhado
@@ -5662,6 +5675,12 @@ def _ops_ficheiro(caminho, ops, guardar):
         elif o["op"] == "ler":
             v = folha(o["folha"])[o["rng"]]
             res.append([[c.value for c in r] for r in v] if isinstance(v, tuple) else [[v.value]])
+        elif o["op"] == "fonte":                       # V235
+            cel = folha(o["folha"])[o["rng"]]
+            for r in (cel if isinstance(cel, tuple) else ((cel,),)):
+                for c in r:
+                    c.font = _FontL(size=o.get("tam") or 11, bold=bool(o.get("negrito")), color=o.get("cor") or "000000")
+            res.append(None)
         else:
             ws = folha(o["folha"])
             cel = ws[o["rng"]]
@@ -5672,7 +5691,7 @@ def _ops_ficheiro(caminho, ops, guardar):
                     if j_ in (o.get("preto") or []):          # V234: nomes com ligação: preto, sem sublinhado
                         c.font = _FontL(color="000000", underline=None, size=c.font.size, bold=c.font.bold)
             res.append(None)
-    if guardar or any(o["op"] == "escrever" for o in ops):
+    if guardar or any(o["op"] in ("escrever", "fonte") for o in ops):
         wb.save(caminho)
     return res
 
@@ -9066,7 +9085,7 @@ def folha_compra(wb):
             ws[f"{col}{r}"].number_format = fm
         for col in (CQ, CND, CTEM):
             ws[f"{col}{r}"].alignment = Alignment(horizontal="center")
-        ws[f"{CMX}{r}"].font = Font(bold=True, size=12)          # compra máxima (ordem limite) em destaque
+        _cmp_fontes(ws, r, None)                                  # V235: por omissão 11 sem negrito
     for col, w in zip("ABCDEFGHIJKLMN", (5, 8, 34, 11, 7, 8, 30, 12, 12, 10, 9, 13, 10, 7)):
         ws.column_dimensions[col].width = w
     ws.column_dimensions[CFX].hidden = True
@@ -9120,12 +9139,6 @@ def folha_compra(wb):
         ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(          # V148: pela decisão (forte só no momento certo)
             formula=[f'LEFT({dcl},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor), font=Font(bold=b_),
             stopIfTrue=True))
-    # V234: o preço a comprar é o de mercado (H): a negrito; a roxo e negrito nos «esperar»
-    ws.conditional_formatting.add(f"{CPR}{a0}:{CPR}{an}", FR(
-        formula=[f'AND(ISNUMBER(${CPR}{a0}),ISNUMBER(SEARCH(": esperar",{dcl})))'], font=Font(color="7030A0", bold=True),
-        stopIfTrue=True))
-    ws.conditional_formatting.add(f"{CPR}{a0}:{CPR}{an}", FR(formula=[f'ISNUMBER(${CPR}{a0})'], font=Font(bold=True),
-                                                            stopIfTrue=True))
     gj = _ler_json(FICH_COMPRA, {})
     res = (gj.get("linhas2") or []) if gj.get("l0") == CMP_L0 and gj.get("cv") == 2 else []   # V223: cv 2 = fixos corrigidos     # V163: resultados de antes (outra linha) não
     for i, lin in enumerate(res[:CMP_MAX]):
@@ -9133,7 +9146,36 @@ def folha_compra(wb):
             c_ = ws.cell(CMP_L0 + i, j, v)
             if j == 3 and isinstance(v, str) and v.startswith("=HYPERLINK("):
                 c_.font = FONTE_LINK
+        _cmp_fontes(ws, CMP_L0 + i, _cmp_esp(lin))           # V235: preço a comprar em destaque
     ws.freeze_panes = None                         # sem painéis fixos
+
+
+def _cmp_esp(lin):
+    """V235: True se a linha da Compra é «esperar», False se é compra, None se não é título."""
+    lin = list(lin or [])
+    if len(lin) < 7 or not txt(lin[3]) or not isinstance(lin[7] if len(lin) > 7 else None, (int, float)):
+        return None
+    return ": esperar" in txt(lin[6])
+
+
+def _cmp_fontes(ws, r, esp):
+    """V235: o preço a comprar em destaque: «esperar» -> compra máxima (I) roxo, negrito, 12; os outros -> preço de
+    mercado (H) preto, negrito, 12. O resto fica 11 sem negrito."""
+    nrm = Font(size=11)
+    ws[f"{CPR}{r}"].font = Font(size=12, bold=True, color="000000") if esp is False else nrm
+    ws[f"{CMX}{r}"].font = Font(size=12, bold=True, color="7030A0") if esp is True else nrm
+
+
+def _cmp_ops_fontes(linhas):
+    """V235: as mesmas fontes, como operações para o Excel aberto."""
+    ops = []
+    for i, lin in enumerate(linhas[:CMP_MAX]):
+        r, esp = CMP_L0 + i, _cmp_esp(lin)
+        ops.append({"op": "fonte", "folha": FOLHA_COMPRA, "rng": f"{CPR}{r}", "tam": 12 if esp is False else 11,
+                    "negrito": esp is False, "cor": "000000"})
+        ops.append({"op": "fonte", "folha": FOLHA_COMPRA, "rng": f"{CMX}{r}", "tam": 12 if esp is True else 11,
+                    "negrito": esp is True, "cor": "7030A0" if esp is True else "000000"})
+    return ops
 
 
 def _num_ou(v, padrao=None):
@@ -9340,6 +9382,7 @@ def calcular_compra():
                     + [None] * len(CMP_CAB))[:len(CMP_CAB)]               # V234: nome com ligação
     ops_ = [{"op": "escrever", "folha": FOLHA_COMPRA, "rng": f"A{CMP_L0}:{get_column_letter(len(CMP_CAB))}{CMP_L0 + CMP_MAX - 1}",
              "valores": vazio}]
+    ops_ += _cmp_ops_fontes(linhas)                # V235
     if cab_fx in ("Ticker", CMP_FIX_TK):          # fixos arrumados (sem buracos, % como fração)
         for k, cn_, cp2_, ct_ in (("fixos_a", "C", "F", "D"), ("fixos_e", "G", "J", "H")):
             lst = [list(x) + [None] * 3 for x in (p.get(k) or [])] + [[None, None, None]] * CMP_NFIX
