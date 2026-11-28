@@ -708,7 +708,7 @@ def cor_cabecalho(grupo):
 
 
 # versão do script (sobe a cada alteração): aparece no topo de todas as folhas e na página do telemóvel
-VERSAO, DATA_VERSAO = "V233", "27/11/2026"
+VERSAO, DATA_VERSAO = "V234", "28/11/2026"
 TXT_VERSAO = f"{VERSAO} ({DATA_VERSAO})"
 
 
@@ -1616,6 +1616,8 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
         r = L0 + i
         for j, (k, _, _, fmt, grp) in enumerate(COLS, start=1):
             c = ws.cell(r, j, link_nome(vazio_esp(d.get(k)), r) if k == "nome" else vazio_esp(d.get(k)))
+            if k == "nome" and isinstance(c.value, str) and c.value.startswith("=HYPERLINK("):
+                c.font = _FontL(color="000000", underline=None, size=c.font.size, bold=c.font.bold)   # V234
             _fmt_cel_base(c, k, fmt)
     n = L0 + max(len(linhas), 1)
     faixa = lambda k: f"{let(COL[k])}{L0+1}:{let(COL[k])}{n}"
@@ -1677,10 +1679,11 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
                           (f"${bl}{L0+1}>1.2", "FCE4D6", "1C1E21")):
         ws.conditional_formatting.add(faixa("beta"), FormulaRule(formula=[f"AND(ISNUMBER(${bl}{L0+1}),{cond})"],
                                       fill=PatternFill("solid", bgColor=cor), font=Font(color=fc), stopIfTrue=True))
-    # V233: «… esperar (?)» sempre a roxo (RGB 112, 48, 160), letra branca
-    ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
-        formula=[f'ISNUMBER(SEARCH(": esperar",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="7030A0"),
-        font=Font(color="FFFFFF", bold=True), stopIfTrue=True))
+    # V234: «… esperar (?)»: letras a roxo (RGB 112, 48, 160) a negrito, fundo verde do nível
+    for txt_, cor_ in (("Compra forte", "63BE7B"), ("Compra média", "A9D18E"), ("Compra", "E2EFDA")):
+        ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
+            formula=[f'AND(LEFT({dc}{L0+1},{len(txt_)})="{txt_}",ISNUMBER(SEARCH(": esperar",{dc}{L0+1})))'],
+            fill=PatternFill("solid", bgColor=cor_), font=Font(color="7030A0", bold=True), stopIfTrue=True))
     ws.conditional_formatting.add(faixa("decisao"), FormulaRule(
         formula=[f'ISNUMBER(SEARCH("saúde frágil",{dc}{L0+1}))'], fill=PatternFill("solid", bgColor="F8CBAD"),
         font=Font(color="C00000", bold=True), stopIfTrue=True))
@@ -1891,7 +1894,7 @@ def folha(ws, nome, titulo, linhas, atualizado, ranking, criterio, idx, estado=N
 # V211: as folhas Simulador e Histórico ficam como estão nas atualizações (copiadas do livro antigo, com gráficos e
 # tudo), enquanto a sua disposição não mudar de versão (marca escondida na célula MARCA_FOLHA)
 MARCA_FOLHA = "KN1"
-MARCAS_FIXAS = {"Simulador": "sim-L4", "Histórico": "his-L4"}   # V221: os dois refeitos 1 vez   # V217: Simulador refeito 1 vez; V218: Histórico refeito (2 gráficos por título)
+MARCAS_FIXAS = {"Simulador": "sim-L5", "Histórico": "his-L4"}   # V221: os dois refeitos 1 vez   # V217: Simulador refeito 1 vez; V218: Histórico refeito (2 gráficos por título)
 
 
 def marcar_folha_fixa(ws):
@@ -5269,6 +5272,7 @@ foreach ($o in $req.ops) {
     $arr = New-Object 'object[,]' $nr, $nc
     for ($i = 0; $i -lt $nr; $i++) { for ($j = 0; $j -lt $nc; $j++) { $arr.SetValue($o.valores[$i][$j], $i, $j) } }
     $rg.Value2 = $arr
+    if ($o.preto) { foreach ($j in $o.preto) { try { $c = $rg.Columns.Item([int]$j + 1); $c.Font.Color = 0; $c.Font.Underline = -4142 } catch {} } }
     [void]$res.Add($null)
   }
 }
@@ -5407,6 +5411,13 @@ def _ops_pywin32(livro, ops, guardar):
             res.append(_como_linhas(rg.Value2))
         else:
             rg.Value2 = [list(r) for r in o["valores"]]
+            for j_ in o.get("preto") or []:                # V234: nomes com ligação: preto, sem sublinhado
+                try:
+                    c_ = rg.Columns(j_ + 1)
+                    c_.Font.Color = 0
+                    c_.Font.Underline = -4142
+                except Exception:
+                    pass
             res.append(None)
     if guardar:
         try:
@@ -5656,8 +5667,10 @@ def _ops_ficheiro(caminho, ops, guardar):
             cel = ws[o["rng"]]
             cel = cel if isinstance(cel, tuple) else ((cel,),)
             for r, linha in zip(cel, o["valores"]):
-                for c, val in zip(r, linha):
+                for j_, (c, val) in enumerate(zip(r, linha)):
                     c.value = val
+                    if j_ in (o.get("preto") or []):          # V234: nomes com ligação: preto, sem sublinhado
+                        c.font = _FontL(color="000000", underline=None, size=c.font.size, bold=c.font.bold)
             res.append(None)
     if guardar or any(o["op"] == "escrever" for o in ops):
         wb.save(caminho)
@@ -5687,7 +5700,13 @@ class Excel:
                 ops = [{**o, "folha": NOME_IDX[o["folha"]]} if isinstance(o.get("folha"), int) and o["folha"] in NOME_IDX
                        else o for o in ops]
         ops = [{**o, "folha": o["folha"][1:]} if isinstance(o.get("folha"), str) and o["folha"].startswith("§") else o
-               for o in ops]                      # (§ = nome sem tradução, só para a experiência acima)
+               for o in ops]
+        for o in ops:                             # V234: colunas com =HYPERLINK: reformatar a preto, sem sublinhado
+            if o.get("op") == "escrever" and "preto" not in o and isinstance(o.get("valores"), list):
+                cs_ = sorted({j_ for l_ in o["valores"] if isinstance(l_, (list, tuple)) for j_, v_ in enumerate(l_)
+                              if isinstance(v_, str) and v_.startswith("=HYPERLINK(")})
+                if cs_:
+                    o["preto"] = cs_                      # (§ = nome sem tradução, só para a experiência acima)
         ops = [{**o, "folha": NOME_PROC[o["folha"]]} if isinstance(o.get("folha"), int) and o.get("folha") in NOME_PROC
                else o for o in ops]               # Proc ações/ETFs pelo nome (a folha Compra vem antes delas)
         if any(o.get("folha") in NOME_PROC.values() for o in ops) and not getattr(self, "_proc_ok", False):
@@ -5761,6 +5780,22 @@ def link_nome(nome, r):
         return nome
     tl = get_column_letter(COL["ticker"])
     return f'=HYPERLINK("{URL_GRAFICO}"&${tl}{r}&"/","{nome[:250].replace(chr(34), chr(34) * 2)}")'
+
+
+from openpyxl.styles import Font as _FontL
+FONTE_LINK = _FontL(color="000000", underline=None)     # V234: nomes com ligação: sempre a preto, sem sublinhado
+
+
+def _link_linha(lin, j_nome, j_tk, col_tk, r):
+    """V234: lista com o nome (índice j_nome) trocado por =HYPERLINK para o Yahoo do ticker (coluna col_tk, linha r)."""
+    lin = list(lin)
+    if len(lin) > max(j_nome, j_tk):
+        nm, tk = lin[j_nome], lin[j_tk]
+        if isinstance(nm, str) and nm.strip() and not nm.startswith("=") and isinstance(tk, str) and \
+                re.fullmatch(r"[A-Za-z0-9.\-^=]{1,15}", tk.strip()):
+            lin[j_nome] = (f'=HYPERLINK("{URL_GRAFICO}"&${col_tk}{r}&"/","'
+                           f'{nm[:250].replace(chr(34), chr(34) * 2)}")')
+    return lin
 
 
 def com_links(valores, i0):
@@ -6502,16 +6537,16 @@ const eur=v=>'€ '+num(v,2);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function cartao(d){
   const dc=d.dc||'';
-  const corDec=dc.includes(': esperar')?'#7030A0':dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
+  const corDec=dc.includes(': esperar')?corDecF(d):dc.startsWith('Compra')?corDecF(d):d.pt===1?'#F8696B':d.pt===2.5?'#F4B183':corDecF(d);
   const azul=v=>v<=1.25?['#1F4E79','#fff']:v<=1.5?['#2F75B5','#fff']:v<=1.75?['#9BC2E6','#1F4E79']:['#BDD7EE','#1F4E79'];
   const NG=d.ng!=null?d.ng:d.nt, corNG=v=>d.ng!=null&&d.np!=null?corG(v,d.lf):cor(v);   // nota pelo negócio/preço (geral + preço)
   const [cn,fn]=d.ca?azul(d.np):[corNG(NG),'inherit'];
   const G5=d.g5, GL=d.gl!=null?d.gl:NG;   // V221: em grande a Nota Global; em baixo Ganhos e Negócio/Preço
   const pq=(t,v,c)=>`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;padding:0 2px;background:${c}">${t} ${num(v,2)}</small>`;
   let h=`<div class="card${d.ds?' ds':''}"><div class="top"><div class="nota" style="background:${GL!=null?corGL(GL,d.lf):cn};color:#1c1e21" title="Nota Global (Negócio/Preço + Ganhos) · em baixo: Nota pelos Ganhos e Nota pelo Negócio/Preço${d.np!=null?' · nível de preço '+num(d.np,2)+'/5':''}">${GL==null?'–':num(GL,2)}${G5!=null?pq('ganhos',G5,corG5(G5,d.lf)):''}${NG!=null?pq('negócio',NG,d.ca?cn:corNG(NG)):''}</div>
-  <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
+  <div class="nm"><b>${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/quote/${encodeURIComponent(d.t)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#000;text-decoration:none">${esc(d.n)}</a>`:esc(d.n)}</b><span>${esc(d.c)} · ${esc(d.t)}</span></div>
   <div class="px">${pr(d.p)} ${esc(d.m)}<span>sinal ${d.pt==null?'–':num(d.pt,d.pt%1?1:0)}</span></div></div>
-  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec};${dc.includes(': esperar')?'color:#fff;font-weight:700':''}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,2)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
+  ${(d.be!=null||(d.pr!=null&&d.pr>0))?`<span style="float:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin-left:4px">${d.pr!=null&&d.pr>0?`<span class="dec" title="PER (preço / lucro dos últimos 12 meses)" style="background:${d.pr<=15?'#C6E5B3':d.pr>40?'#F8A5A6':d.pr>25?'#FCE4D6':'#eceff3'};color:#1c1e21">PE ${num(d.pr,d.pr>=100?0:1)}</span>`:''}${d.be!=null?`<span class="dec" title="Beta: volatilidade face ao S&amp;P 500" style="background:${d.be<0.8?'#C6E5B3':d.be>1.5?'#F8A5A6':d.be>1.2?'#FCE4D6':'#eceff3'};color:#1c1e21">β ${num(d.be,2)}</span>`:''}</span>`:''}<span class="dec" style="background:${corDec};${dc.includes(': esperar')?'color:#7030A0;font-weight:700':''}">${esc(dc)}</span>${d.gn!=null?` <span class="dec" style="background:#eceff3" title="Rentabilidade anual da base da nota pelos ganhos (sem os fatores preço e volatilidade)">ganhos <small>${d.gn>=0?'+':''}${num(d.gn*100,1)}%/ano</small></span>`:''}${d.np!=null?` <span class="dec" style="background:${d.nc||'#eceff3'};color:${/muito/.test(d.nr||'')?'#fff':'#1c1e21'}">${num(d.np,2)} ${esc(d.nr||'')}</span>`:''}${d.qn!=null?`<div class="pos"><div>Nº${d.br?' · '+d.br:''}<b>${num(d.qn,2)}</b></div><div>Preço médio<b>${d.pc!=null?pr(d.pc):'–'}</b></div>
   <div>Valor total<b>${d.vd!=null?eur(d.vd):'–'}${d.lpp!=null?` <span style="color:${d.lpp>=0?'#1e8e3e':'#d93025'}">(${pct2(d.lpp)})</span>`:''}</b></div>
   <div>Lucro / prejuízo<b>${d.le!=null?`<span style="color:${d.le>=0?'#1e8e3e':'#d93025'}">${d.le>=0?'+':'−'}${eur(Math.abs(d.le))}</span>`:'–'}</b></div></div>`:''}
   <div class="lv"><div class="rt">Compra</div><div>Preço compra (Limite)<b>${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
@@ -6544,7 +6579,7 @@ const nPt=v=>{const x=parseFloat(String(v).replace(/\s|€|%/g,'').replace(',','
 const corT=d=>d.np!=null?corG(d.ngc,d.lf):cor(d.ngc);
 const corG5=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2?'#F4B183':v>=1?'#FFEB9C':'#F8696B';   // V221: Nota pelos Ganhos
 const corGL=(v,f)=>v>=(f??4)?'#63BE7B':v>=3.5?'#A9D18E':v>=3?'#E2EFDA':v>=2.25?'#F4B183':v>=1.5?'#FFEB9C':'#F8696B';   // V221: Nota Global   // ações com nível de preço: 3,9/3,5/3; ETFs: 4,5/3,75/2,75
-function corDecF(d){const dc=d.dc||'';return dc.includes(': esperar')?'#7030A0':/saúde frágil/i.test(dc)?'#F8CBAD':
+function corDecF(d){const dc=d.dc||'';return /saúde frágil/i.test(dc)?'#F8CBAD':
   dc.startsWith('Venda')?'#F8696B':/Longo Prazo/.test(dc)?'#F4B183':dc.startsWith('Manter')?'#FFEB9C':
   dc.startsWith('Compra forte')?'#63BE7B':dc.startsWith('Compra média')?'#A9D18E':dc.startsWith('Compra')?'#E2EFDA':'#FFEB9C';}
 function compra(){
@@ -6612,10 +6647,10 @@ function calcCompra(){
     const cards=esc_.filter(vis).map(d=>{
       const f=fora(d),w=wd(d),v=w*val,pe=d.p!=null&&d.fx!=null?d.p*d.fx:null,na=pe&&v>0?v/pe:null;
       return `<div class="card cmp${f?' fora':''}"><div class="top"><div class="nota" style="background:${corGL(d.ngc,d.lf)}" title="Nota Global (dá os montantes) · em baixo: Ganhos e Negócio/Preço">${num(d.ngc,2)}${d.g5!=null?`<small style="display:block;font-size:9.5px;font-weight:700;margin-top:2px;border-radius:4px;background:${corG5(d.g5,d.lf)}">ganhos ${num(d.g5,2)}</small>`:''}${(d.ng??d.nt)!=null?`<small style="display:block;font-size:9.5px;font-weight:400;margin-top:1px">negócio ${num(d.ng??d.nt,2)}</small>`:''}</div>
-      <div class="nm"><b>${d.fixo!=null?'📌 ':''}${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline dotted">${esc(d.n)}</a>`:esc(d.n)}${d.fixo!=null?' <small style="font-weight:400;color:var(--mu)">(fixo)</small>':''}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
+      <div class="nm"><b>${d.fixo!=null?'📌 ':''}${d.x?'<span class="det">★ </span>':''}${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:#000;text-decoration:none">${esc(d.n)}</a>`:esc(d.n)}${d.fixo!=null?' <small style="font-weight:400;color:var(--mu)">(fixo)</small>':''}</b><span>${esc(d.c)} · ${d.t?`<a href="https://finance.yahoo.com/chart/${encodeURIComponent(d.t)}" target="_blank" rel="noopener" style="color:inherit">${esc(d.t)} 📈</a>`:''}</span></div>
       <div class="px">${eur(v)}<span>${num(w*100,1)}% do grupo</span></div></div>
       <span class="dec" style="background:${corDecF(d)};${dc_(d)}">${esc(d.dc)}${d.dc0?` <small style="font-weight:400">(no painel: ${esc(d.dc0)})</small>`:''}</span>
-      <div class="lv3"><div>Preço atual<b>${pr(d.p)} ${esc(d.m)}</b></div><div>Preço compra (Limite)<b class="cmx">${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
+      <div class="lv3"><div>Preço de Mercado<b>${pr(d.p)} ${esc(d.m)}</b></div><div>Preço compra (Limite)<b class="cmx">${pr(d.tm)} <small>${pct(d.tmp)}</small></b></div>
       <div>Nº de ações<b>${na==null?'–':num(na,2)}</b></div></div>
       <div class="cbt"><button data-k="nq" data-t="${esc(T(d))}" class="${nq.has(T(d))?'on':''}">Não quero</button><button data-k="nd" data-t="${esc(T(d))}" class="${nd.has(T(d))?'on':''}">Não disponível</button></div></div>`;});
     esc_.forEach(d=>{tv+=wd(d)*val;});
@@ -6625,7 +6660,7 @@ function calcCompra(){
   }
   g('cr').innerHTML=h;
 }
-const dc_=d=>(d.dc||'').includes(': esperar')?'color:#fff;font-weight:700':(d.dc||'').startsWith('Venda')?'font-weight:700':'';
+const dc_=d=>(d.dc||'').includes(': esperar')?'color:#7030A0;font-weight:700':(d.dc||'').startsWith('Venda')?'font-weight:700':'';
 function ligarCompra(){
   const cp=document.getElementById('cp');                       // % sempre com o símbolo (60%, não 0,6)
   cp.addEventListener('focus',()=>{cp.value=cp.value.replace('%','').trim();});
@@ -8879,7 +8914,7 @@ CMP_NFIX = 5                    # V163: títulos fixos por grupo (ticker + % do 
 CMP_FIX_L = 13                  # 1.ª linha dos fixos (ações: C nome, D ticker, E %; ETFs: G nome, H ticker, I %)
 CMP_FIX_TK = "Ticker (automático)"   # V164: o nome escolhe-se numa lista; o ticker vem sozinho
 CMP_MAX = 150
-CMP_CAB = ("Não quero (x)", "Não disponível (x)", "Título", "Ticker", "Tipo", "Nota Global", "Decisão", "Preço atual",
+CMP_CAB = ("Não quero (x)", "Não disponível (x)", "Título", "Ticker", "Tipo", "Nota Global", "Decisão", "Preço de Mercado",
            "Compra máxima (ordem limite)", "Compra máxima / atual (%)", "Peso no grupo (%)", "Valor a investir (€)",
            "Nº de ações (aprox.)", "Tenho", "Câmbio para €", "Moeda", "Escala", "Visível", "Fixo", "Fixo: % do grupo")
 # colunas da tabela (letras)
@@ -9069,7 +9104,12 @@ def folha_compra(wb):
         fill=PatternFill("solid", bgColor="DDEBF7")))
     # decisão: as mesmas cores das folhas Ações / ETFs
     dcl = f"${CDC}{a0}"
-    for f_, cor, fnt in ((f'ISNUMBER(SEARCH(": esperar",{dcl}))', "7030A0", Font(color="FFFFFF", bold=True)),   # V233: roxo
+    for f_, cor, fnt in ((f'AND(LEFT({dcl},12)="Compra forte",ISNUMBER(SEARCH(": esperar",{dcl})))', "63BE7B",
+                          Font(color="7030A0", bold=True)),                 # V234: «esperar»: letras roxas
+                         (f'AND(LEFT({dcl},12)="Compra média",ISNUMBER(SEARCH(": esperar",{dcl})))', "A9D18E",
+                          Font(color="7030A0", bold=True)),
+                         (f'AND(LEFT({dcl},6)="Compra",ISNUMBER(SEARCH(": esperar",{dcl})))', "E2EFDA",
+                          Font(color="7030A0", bold=True)),
                          (f'ISNUMBER(SEARCH("saúde frágil",{dcl}))', "F8CBAD", Font(color="C00000", bold=True)),
                          (f'LEFT({dcl},5)="Venda"', "F8696B", Font(bold=True)),
                          (f'ISNUMBER(SEARCH("Longo Prazo",{dcl}))', "F4B183", None),
@@ -9080,11 +9120,19 @@ def folha_compra(wb):
         ws.conditional_formatting.add(f"{CDC}{a0}:{CDC}{an}", FR(          # V148: pela decisão (forte só no momento certo)
             formula=[f'LEFT({dcl},{len(txt_)})="{txt_}"'], fill=PatternFill("solid", bgColor=cor), font=Font(bold=b_),
             stopIfTrue=True))
+    # V234: o preço a comprar é o de mercado (H): a negrito; a roxo e negrito nos «esperar»
+    ws.conditional_formatting.add(f"{CPR}{a0}:{CPR}{an}", FR(
+        formula=[f'AND(ISNUMBER(${CPR}{a0}),ISNUMBER(SEARCH(": esperar",{dcl})))'], font=Font(color="7030A0", bold=True),
+        stopIfTrue=True))
+    ws.conditional_formatting.add(f"{CPR}{a0}:{CPR}{an}", FR(formula=[f'ISNUMBER(${CPR}{a0})'], font=Font(bold=True),
+                                                            stopIfTrue=True))
     gj = _ler_json(FICH_COMPRA, {})
     res = (gj.get("linhas2") or []) if gj.get("l0") == CMP_L0 and gj.get("cv") == 2 else []   # V223: cv 2 = fixos corrigidos     # V163: resultados de antes (outra linha) não
     for i, lin in enumerate(res[:CMP_MAX]):
-        for j, v in enumerate(lin, 1):
-            ws.cell(CMP_L0 + i, j, v)
+        for j, v in enumerate(_link_linha(lin, 2, 3, CTK, CMP_L0 + i), 1):
+            c_ = ws.cell(CMP_L0 + i, j, v)
+            if j == 3 and isinstance(v, str) and v.startswith("=HYPERLINK("):
+                c_.font = FONTE_LINK
     ws.freeze_panes = None                         # sem painéis fixos
 
 
@@ -9288,7 +9336,8 @@ def calcular_compra():
                                "l0": CMP_L0, "ts": int(time.time() * 1000)})          # a app usa as escolhas mais recentes
     vazio = [[None] * len(CMP_CAB) for _ in range(CMP_MAX)]
     for i, lin in enumerate(linhas[:CMP_MAX]):
-        vazio[i] = ([None if v == "" else v for v in lin] + [None] * len(CMP_CAB))[:len(CMP_CAB)]
+        vazio[i] = (_link_linha([None if v == "" else v for v in lin], 2, 3, CTK, CMP_L0 + i)
+                    + [None] * len(CMP_CAB))[:len(CMP_CAB)]               # V234: nome com ligação
     ops_ = [{"op": "escrever", "folha": FOLHA_COMPRA, "rng": f"A{CMP_L0}:{get_column_letter(len(CMP_CAB))}{CMP_L0 + CMP_MAX - 1}",
              "valores": vazio}]
     if cab_fx in ("Ticker", CMP_FIX_TK):          # fixos arrumados (sem buracos, % como fração)
@@ -9702,13 +9751,21 @@ def _sim_cod(t):
         if lt.startswith(ini):
             return k
     return 2
-SIM_RODAR = ["Só compras", "Rodar a carteira"]
+SIM_RODAR = ["Só compras", "Rodar a carteira (vende e roda tudo)", "Rodar os juros dos títulos com lucro acima de F13",
+             "Rodar capital+juros dos títulos com lucro acima de F13"]   # V234: + rodar ganhos / posições com lucro
+
+
+def _sim_rodar_cod(v):
+    """0 só compras, 1 rodar tudo, 2 rodar os juros (o lucro), 3 rodar capital+juros (com lucro acima de F13)."""
+    t_ = txt(v).strip().lower()
+    return 2 if t_.startswith("rodar os juros") else 3 if t_.startswith("rodar capital") else \
+        1 if t_.startswith("rodar a carteira") else 0
 SIM_ENTRE = ["Ações e ETFs", "Só ações", "Só ETFs"]
 SIM_ESPERA = ["Comprar todas", "Só as que não dizem «esperar»"]   # V209
 SIM_PADRAO = {"ini_sim": "Sim", "ini_val": 10000, "per": "Mensal", "per_val": 200, "comprar": SIM_COMPRAR[1],
               "infl": "Portugal",
               "n": 10, "entre": SIM_ENTRE[0], "d_ini": "01/01/2016", "d_fim": "", "bench": "IWDA.AS",
-              "carteira": [], "rodar": SIM_RODAR[0], "nota_usada": SIM_NOTA[0], "n_a": 5, "v_a": 150, "n_e": 3, "v_e": 100,
+              "carteira": [], "rodar": SIM_RODAR[0], "lucro_rodar": 0.2, "nota_usada": SIM_NOTA[0], "n_a": 5, "v_a": 150, "n_e": 3, "v_e": 100,
               "nota_min": 4}
 SIM_LIN_CART, SIM_MAX_CART = 16, 30          # carteira escolhida: B16:C45
 SIM_LIN_TIT, SIM_MAX_TIT = 16, 60            # resultado por título: N16:R75
@@ -9778,7 +9835,8 @@ def ler_simulador(ex):
          "entre": txt(g(3, 0)) or SIM_ENTRE[0], "pa": _sim_num(g(3, 3)),
          "d_ini": g(4, 0), "d_fim": g(4, 3), "bench": txt(g(5, 0)),
          "esp": SIM_ESPERA[1] if txt(g(5, 3)).lower().startswith("só") else SIM_ESPERA[0],
-         "rodar": txt(g(6, 0)) or SIM_RODAR[0], "n_a": _sim_num(g(7, 0)), "v_a": _sim_num(g(7, 3)),
+         "rodar": SIM_RODAR[_sim_rodar_cod(g(6, 0))], "n_a": _sim_num(g(7, 0)), "v_a": _sim_num(g(7, 3)),
+         "lucro_rodar": _sim_num(g(9, 3)),
          "nota_usada": next((n_ for n_ in SIM_NOTA if txt(g(6, 3)).strip().lower() == n_.lower()), SIM_NOTA[0]),
          "n_e": _sim_num(g(8, 0)), "v_e": _sim_num(g(8, 3)), "nota_min": _sim_num(g(9, 0)),
          "carteira": [[txt(sem_esp(a)).upper(), _sim_num(sem_esp(b))] for a, b, *_ in (cart or [])
@@ -9787,6 +9845,8 @@ def ler_simulador(ex):
         d = _sim_data(p[k])
         p[k] = d.strftime("%d/%m/%Y") if d else ""
     p["comprar"] = SIM_COMPRAR[_sim_cod(p["comprar"]) - 1]
+    if isinstance(p.get("lucro_rodar"), (int, float)) and p["lucro_rodar"] > 1:   # 20 = 20%
+        p["lucro_rodar"] = p["lucro_rodar"] / 100
     return p
 
 
@@ -9864,11 +9924,12 @@ def folha_simulador(wb):
                  _sim_data(p["d_fim"]) or p["d_fim"]),
                 ("Comparar com (ticker Yahoo)", "C9", p["bench"], None, "Compras com «esperar»", "F9",
                  p.get("esp") or SIM_ESPERA[0]),
-                ("Ao reclassificar (em cada data)", "C10", p.get("rodar") or SIM_RODAR[0], SIM_RODAR, "Nota usada", "F10",
+                ("Ao reclassificar (em cada data)", "C10", SIM_RODAR[_sim_rodar_cod(p.get("rodar"))], SIM_RODAR, "Nota usada", "F10",
                  p.get("nota_usada") or SIM_NOTA[0]),
                 ("Ações: N primeiras", "C11", p.get("n_a"), None, "€ em ações por reforço", "F11", p.get("v_a")),
                 ("ETFs: N primeiros", "C12", p.get("n_e"), None, "€ em ETFs por reforço", "F12", p.get("v_e")),
-                ("Nota mínima (5, 8-12)", "C13", p.get("nota_min"), None, None, None, None)]
+                ("Nota mínima (5, 8-12)", "C13", p.get("nota_min"), None, "Lucro mínimo para rodar (C10)", "F13",
+                 p.get("lucro_rodar", 0.2))]
     for rot, cel, v, itens, rot2, cel2, v2 in linhas_e:
         r = int(cel[1:])
         ws[f"B{r}"] = rot
@@ -9881,13 +9942,15 @@ def folha_simulador(wb):
             ws[f"E{r}"] = rot2
             ws[f"E{r}"].alignment = Alignment(horizontal="right")
             entrada(cel2, v2, "dd/mm/yyyy" if r == 8 else ('"€" #,##0' if r in (4, 5, 11, 12) else
-                                                            "0%" if r == 7 else "General"))
+                                                            "0%" if r in (7, 13) else "General"))
             if r == 9:
                 lista(cel2, SIM_ESPERA)
             if r == 10:
                 lista(cel2, SIM_NOTA)
-    ws["G10"] = ("(só nas escolhas «em cada data»: «Só compras» compra os melhores de cada data e guarda o que já tem; "
-                 "«Rodar a carteira» vende o que saiu e reparte tudo pelos escolhidos, sem comissões nem impostos)")
+    ws["G10"] = ("(só nas escolhas «em cada data», em cada reforço: «Só compras» compra os melhores de cada data e guarda o "
+                 "que já tem; «Rodar a carteira» vende tudo e reparte pelos escolhidos; «Rodar os juros» vende só o lucro "
+                 "dos títulos com lucro acima da F13 e põe-no nos escolhidos; «Rodar capital+juros» vende esses títulos "
+                 "inteiros. Sem comissões nem impostos)")
     ws["G10"].font = Font(italic=True, size=9, color="808080")
     ws["G9"] = ("(C9 ex.: IWDA.AS = ações mundiais em €; vazio = sem comparação · F9 «esperar»: preço abaixo da média de "
                 "200 dias −5%, em cada data, como no painel; nas opções 1-4, 7, 9 e 11 o dinheiro desse título fica guardado e é "
@@ -9911,16 +9974,18 @@ def folha_simulador(wb):
     usa = {"F6": (2, 3, 5, 6, 9, 10, 11, 12), "C7:D7": (1, 2, 3, 5, 6, 9, 11), "C10:D10": (5, 6, 8, 10, 12),
            "C11:D11": (7, 8), "F11": (7, 8), "C12:D12": (7, 8), "F12": (7, 8), "C13:D13": (5, 8, 9, 10, 11, 12),
            "F7": (2, 3, 5, 6, 9, 11), "F9": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
-           "F10": (2, 3, 5, 6, 7, 8, 9, 10, 11, 12),
+           "F10": (2, 3, 5, 6, 7, 8, 9, 10, 11, 12), "F13": (5, 6, 8, 10, 12),
            "F5": (1, 2, 3, 4, 5, 6, 9, 10, 11, 12),
            f"B{SIM_LIN_CART}:C{SIM_LIN_CART + SIM_MAX_CART - 1}": (4,)}
     for rng_, cods in usa.items():                       # não conta para a escolha feita em «Comprar» -> cinzento
         f_ = "NOT(OR(" + ",".join(f"{cod_f}={c}" for c in cods) + "))"
+        if rng_ == "F13":                                 # V234: só com «Rodar os juros» / «Rodar capital+juros»
+            f_ = f'OR({f_},NOT(ISNUMBER(SEARCH("lucro acima",$C$10))))'
         ws.conditional_formatting.add(rng_, FormulaRule(formula=[f_], fill=cinza, font=Font(color="BFBFBF")))
-    ws["E13"] = ("(a nota escolhida em F10, 0-5. Opções 5, 8, 10, 12: não se compra nenhum título com nota abaixo disto "
-                 "na data da compra; opções 9 e 11: só entram os de nota de hoje ≥ isto; vazio = sem mínimo. "
-                 "Na 3 e na 6 a nota mínima é a F6)")
-    ws["E13"].font = Font(italic=True, size=9, color="808080")
+    ws["G13"] = ("(C13: a nota escolhida em F10, 0-5. Opções 5, 8, 10, 12: não se compra nenhum título com nota abaixo "
+                 "disto na data da compra; opções 9 e 11: só entram os de nota de hoje ≥ isto; vazio = sem mínimo. Na 3 e "
+                 "na 6 a nota mínima é a F6 · F13: lucro do título (valor / o que custou − 1) a partir do qual se roda)")
+    ws["G13"].font = Font(italic=True, size=9, color="808080")
     ws["G11"] = ("(só em «N primeiras ações + N primeiros ETFs»: cada reforço põe estes valores em cada parte, na "
                  "periodicidade escolhida; o investimento inicial reparte-se na mesma proporção)")
     ws["G11"].font = Font(italic=True, size=9, color="808080")
@@ -9995,8 +10060,10 @@ def folha_simulador(wb):
         for cel, v in res.get("resumo", []):
             ws[cel] = v
         for i, lin in enumerate(res.get("titulos", [])[:SIM_MAX_TIT]):
-            for j, v in enumerate(lin, 14):
-                ws.cell(SIM_LIN_TIT + i, j, v)
+            for j, v in enumerate(_link_linha(lin, 0, 1, "O", SIM_LIN_TIT + i), 14):
+                c_ = ws.cell(SIM_LIN_TIT + i, j, v)
+                if j == 14 and isinstance(v, str) and v.startswith("=HYPERLINK("):
+                    c_.font = FONTE_LINK
         for i, lin in enumerate(res.get("serie", [])[:SIM_MAX_SER]):
             for j, v in enumerate(lin, 21):
                 ws.cell(SIM_LIN_SER + i, j, _sim_data(v) if j == 21 else v)
@@ -12957,7 +13024,7 @@ def _sim_notas_precos(tab):
     return nota.where(n_tend.notna() & sinal.notna() & n_mom.notna())
 
 
-def _sim_correr_dinamico(tab, notas, compras, modo, limite, rodar, minimo=None, ordem=None, verificar=None):
+def _sim_correr_dinamico(tab, notas, compras, modo, limite, rodar, minimo=None, ordem=None, verificar=None, lucro=None):
     """Em cada compra escolhe pela nota de preços desse dia (N primeiros ou nota ≥); só compras ou rodar a carteira
     (vende o que saiu e reparte tudo em partes iguais pelos escolhidos)."""
     import pandas as pd
@@ -12967,7 +13034,9 @@ def _sim_correr_dinamico(tab, notas, compras, modo, limite, rodar, minimo=None, 
         pos = idx.searchsorted(pd.Timestamp(d))
         if pos < len(idx):
             planos[idx[pos]] = planos.get(idx[pos], 0.0) + v
-    unid, inv_t, vezes, vendido = {}, {}, {}, {}
+    unid, inv_t, vezes, vendido, custo = {}, {}, {}, {}, {}
+    rodar = int(rodar or 0)                            # V234: 0 só compras, 1 tudo, 2 os juros, 3 capital+juros
+    lucro = 0.0 if lucro is None else float(lucro)
     caixa, fluxos, investido, val, inv = 0.0, [], 0.0, [], []
     verificar = set(verificar or [])
     sem_escolha = 0
@@ -12992,18 +13061,33 @@ def _sim_correr_dinamico(tab, notas, compras, modo, limite, rodar, minimo=None, 
                 vezes[t] = vezes.get(t, 0) + 1
             if not esc and entra:
                 sem_escolha += 1
-            if rodar and esc and entra:
+            if rodar == 1 and esc and entra:
                 for t in list(unid):                    # vende tudo (fica em caixa) e reparte pelos escolhidos
                     if unid[t] and pd.notna(px.get(t)):
                         caixa += unid[t] * px[t]
                         vendido[t] = vendido.get(t, 0.0) + unid[t] * px[t]
                     unid[t] = 0.0
+                    custo[t] = 0.0
+            elif rodar in (2, 3) and esc and entra:     # V234: só os títulos com lucro acima do mínimo
+                for t in list(unid):
+                    if not unid[t] or pd.isna(px.get(t)) or not px[t] > 0:
+                        continue
+                    v_, c_ = unid[t] * px[t], custo.get(t, 0.0)
+                    if c_ <= 0 or v_ / c_ - 1 <= lucro:
+                        continue
+                    sai = v_ - c_ if rodar == 2 else v_  # 2: só o lucro (fica o capital); 3: tudo
+                    unid[t] -= sai / px[t]
+                    caixa += sai
+                    vendido[t] = vendido.get(t, 0.0) + sai
+                    if rodar == 3:
+                        unid[t], custo[t] = 0.0, 0.0
             dinheiro = entra + caixa
             if esc:
                 for t in esc:
                     parte = dinheiro / len(esc)
                     unid[t] = unid.get(t, 0.0) + parte / px[t]
                     inv_t[t] = inv_t.get(t, 0.0) + parte
+                    custo[t] = custo.get(t, 0.0) + parte
                 caixa = 0.0
             else:
                 caixa = dinheiro
@@ -13293,9 +13377,10 @@ def simular():
             if dinamico:
                 md_, lm_ = ("n", n) if cod in (7, 8) else (modo, limite)
                 u_, i_, sv_, si_, f_, vz, vd_ = _sim_correr_dinamico(tab[tk], notas_p.reindex(columns=tk), cg, md_, lm_,
-                                                                     p.get("rodar") == SIM_RODAR[1], nmin,
+                                                                     _sim_rodar_cod(p.get("rodar")), nmin,
                                                                      niveis_p.reindex(columns=tk) if cod in (10, 12)
-                                                                     else None, verificar=dias_v)
+                                                                     else None, verificar=dias_v,
+                                                                     lucro=p.get("lucro_rodar"))
                 vezes.update(vz)
                 vendido.update(vd_)
             else:
@@ -13313,8 +13398,9 @@ def simular():
         unid = {t: unid.get(t, 0.0) for t in pesos_ok}
     elif dinamico:
         unid, inv_t, sv, si, fluxos, vezes, vendido = _sim_correr_dinamico(
-            tab[list(pesos_ok)], notas_p.reindex(columns=list(pesos_ok)), compras, modo, limite, p.get("rodar") == SIM_RODAR[1], nmin,
-            niveis_p.reindex(columns=list(pesos_ok)) if cod in (10, 12) else None, dias_v)
+            tab[list(pesos_ok)], notas_p.reindex(columns=list(pesos_ok)), compras, modo, limite,
+            _sim_rodar_cod(p.get("rodar")), nmin,
+            niveis_p.reindex(columns=list(pesos_ok)) if cod in (10, 12) else None, dias_v, lucro=p.get("lucro_rodar"))
         pesos_ok = {t: 1.0 for t in inv_t}
         unid = {t: unid.get(t, 0.0) for t in pesos_ok}
     else:
@@ -13356,12 +13442,13 @@ def simular():
         notas.append("«esperar» = preço abaixo da média de 200 dias −5%, em cada data: "
                      + ("nessa data o título não é escolhido" if dinamico else
                         "a parte desse título fica guardada e é comprada no 1.º dia em que deixa de esperar"))
+    rod_txt = txt(p.get("rodar")).replace("F13", f"{(p.get('lucro_rodar') or 0):.0%}")   # V234
     if dinamico:
         notas.append(f"reclassificado em cada data pela {nota_u} (ganhos: parâmetros das folhas Ações / ETFs) só com "
                      f"as cotações até cada data (o preço pela distância à tendência; sem qualidade e saúde)"
                      + (f"; nível de preço das ações dos EUA pelos relatórios anuais da SEC já divulgados nessa data "
                         f"({len(sec)} empresas)" if cod in (10, 12) else "")
-                     + f"; {p.get('rodar')}; {len(vezes)} títulos diferentes "
+                     + f"; {rod_txt}; {len(vezes)} títulos diferentes "
                      "escolhidos ao longo do tempo; a lista de títulos é a de hoje (as que desapareceram não entram)")
     elif cod in (2, 3, 7, 9, 11):
         notas.append(f"escolha feita pela {nota_u} de hoje: o passado fica favorecido")
@@ -13419,7 +13506,8 @@ def simular():
               round(float(sb[d_]), 2) if sb is not None else None, round(c_, 2) if c_ is not None else None]
              for d_, c_ in zip(pts, ci)]
     vazio = lambda nl, nc: [[None] * nc for _ in range(nl)]
-    tit_w = (titulos + vazio(SIM_MAX_TIT, 7))[:SIM_MAX_TIT]
+    tit_w = ([_link_linha(l_, 0, 1, "O", SIM_LIN_TIT + i_) for i_, l_ in enumerate(titulos)]
+             + vazio(SIM_MAX_TIT, 7))[:SIM_MAX_TIT]                     # V234: nome com ligação
     ser_w = (serie + vazio(SIM_MAX_SER, 5))[:SIM_MAX_SER]
     ops = [{"op": "escrever", "folha": FOLHA_SIM, "rng": cel, "valores": [[v]]} for cel, v in resumo]
     ops += [{"op": "escrever", "folha": FOLHA_SIM, "rng": f"N{SIM_LIN_TIT}:T{SIM_LIN_TIT + SIM_MAX_TIT - 1}",
